@@ -3,13 +3,15 @@
  */
 public class MessageData {
     private final long timestamp;
+    private final int cid;
     private final String from;
     private final String to;
     private final String key;
     private final String message;
 
-    public MessageData(long timestamp, String from, String to, String key, String message) {
+    public MessageData(long timestamp, int cid, String from, String to, String key, String message) {
         this.timestamp = timestamp;
+        this.cid = cid;
         this.from = from;
         this.to = to;
         this.key = key;
@@ -34,6 +36,10 @@ public class MessageData {
 
     public String getMessage() {
         return message;
+    }
+
+    public int getCid() {
+        return cid;
     }
 
     @Override

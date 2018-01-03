@@ -3,7 +3,7 @@ import org.junit.Test;
 
 import static org.junit.Assert.*;
 
-public class CollaborationKeyTest {
+public class CollaborationsKeyTest {
     @Test
     public void testSameKey() {
         CollaborationKey c1 = new CollaborationKey("moshe", "david");

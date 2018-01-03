@@ -1,22 +1,18 @@
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
 import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpEntity;
-import org.apache.http.HttpHeaders;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ByteArrayEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.log4j.Logger;
-import sun.net.www.http.HttpClient;
 
 import javax.inject.Singleton;
 import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.GET;
-import javax.ws.rs.PATCH;
 import javax.ws.rs.POST;
 import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
@@ -27,9 +23,6 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringWriter;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.util.AbstractMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,7 +37,7 @@ public class Messenger extends Application {
     private final static Logger logger = Logger.getLogger(Messenger.class);
     private final static String MESSAGING_TOPIC = "test_messaging_topic";
 
-    private final static Map<String, Collaboration> collaborations = new HashMap<>();
+    private final static Map<String, Collaborations> collaborations = new HashMap<>();
 
     private final Gson gson = new Gson();
     private final String sendMessageUrl;
@@ -81,35 +74,29 @@ public class Messenger extends Application {
         }
     }
 
-    static String createCollaborationKey(String userId1, String userId2) {
-        if (userId1 == null || userId2 == null || userId1.isEmpty() || userId2.isEmpty()) {
-            throw new NullPointerException("User ids can't be null or empty");
-        }
-        if (userId1.equals(userId2)) {
-            throw new IllegalArgumentException("Ids can't be the same");
-        }
-
-        return (userId1.compareTo(userId2) > 0) ? String.format("%s%d%s", userId1, userId1.hashCode(), userId2) : String.format("%s%d%s", userId2, userId2.hashCode(), userId1);
-    }
+    //region Hello From Service
 
     @GET
     public Response root() {
         logCalledEndpoint("/");
         return logAndCreateResponse(200, "Hello from communication service");
     }
+    //endregion
+
+    //region Read Messages
 
     @GET
     @Path("/{c_id}/latest")
     public Response getLatestFrom(@QueryParam("from") String fromUser, @QueryParam("to") String toUser, @PathParam("c_id") int cid) {
-        logCalledEndpoint("/latest", new Parameter("from", fromUser), new Parameter("to", toUser));
+        logCalledEndpoint(String.format("/%d/latest", cid), new Parameter("from", fromUser), new Parameter("to", toUser));
 
         String key = createCollaborationKey(fromUser, toUser);
-        Collaboration collaboration = collaborations.get(key);
-        if (collaboration == null){
+        Collaborations collaborations = Messenger.collaborations.get(key);
+        if (collaborations == null) {
             return logAndCreateResponse(404, String.format("No collaborations exists between the users '%s' and '%s'", fromUser, toUser));
         }
-        MessageData msg = collaboration.getLastMessageFrom(fromUser);
-        if (msg == null){
+        MessageData msg = collaborations.getLastMessageFrom(cid, fromUser);
+        if (msg == null) {
             return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", fromUser, toUser));
         }
 
@@ -117,17 +104,17 @@ public class Messenger extends Application {
     }
 
     @GET
-    @Path("/all")
-    public Response getAllFrom(@QueryParam("from") String fromUser, @QueryParam("to") String toUser) {
-        logCalledEndpoint("/latest", new Parameter("from", fromUser), new Parameter("to", toUser));
+    @Path("/{c_id}/all")
+    public Response getAllFrom(@QueryParam("from") String fromUser, @QueryParam("to") String toUser, @PathParam("c_id") int cid) {
+        logCalledEndpoint(String.format("/%d/all", cid), new Parameter("from", fromUser), new Parameter("to", toUser));
 
         String key = createCollaborationKey(fromUser, toUser);
-        Collaboration collaboration = collaborations.get(key);
-        if (collaboration == null){
+        Collaborations collaborations = Messenger.collaborations.get(key);
+        if (collaborations == null) {
             return logAndCreateResponse(404, String.format("No collaborations exists between the users '%s' and '%s'", fromUser, toUser));
         }
-        List<MessageData> messages = collaboration.getAllMessagesFrom(fromUser);
-        if (messages.size() == 0){
+        List<MessageData> messages = collaborations.getAllMessagesFrom(cid, fromUser);
+        if (messages.size() == 0) {
             return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", fromUser, toUser));
         }
         JsonArray array = new JsonArray();
@@ -135,29 +122,9 @@ public class Messenger extends Application {
 
         return logAndCreateResponse(200, gson.toJson(array));
     }
+    //endregion
 
-    private Collaboration getCollaboration(String user1, String user2) {
-        String key = createCollaborationKey(user1, user2);
-        return collaborations.get(key);
-    }
-
-    @POST
-    @Path("/start-new")
-    public Response startNewCommunication(@QueryParam("id1") String user1, @QueryParam("id2") String user2) {
-        logCalledEndpoint("/start-new", new Parameter("id1", user1), new Parameter("id2", user2));
-        String key = createCollaborationKey(user1, user2);
-        Collaboration collaboration = collaborations.get(key);
-        int collaborationCount = 1;
-        if (collaboration == null) {
-            collaboration = new Collaboration(user1, user2);
-            collaborations.put(key, collaboration);
-        } else {
-            collaboration.startNew();
-            collaborationCount = collaboration.getCount();
-        }
-
-        return logAndCreateResponse(201, String.format("Started new collaboration, count=%d between user-id=%s and user-id=%s", collaborationCount, user1, user2));
-    }
+    //region Send - Receive
 
     @POST
     @Path("/receive")
@@ -170,21 +137,38 @@ public class Messenger extends Application {
             throw new NullPointerException("Message is null");
         }
         String key = messageData.getKey();
-        Collaboration collaboration = collaborations.get(key);
-        if (collaboration == null) {
-            logger.error("Something really bad has happened - received message for non existing collaboration key");
-            throw new NullPointerException("Collaboration is null");
+        Collaborations collaborations = Messenger.collaborations.get(key);
+        if (collaborations == null) {
+            logger.error("Something really bad has happened - received message for non existing collaborations key");
+            throw new NullPointerException("Collaborations is null");
         }
-        collaboration.addNewMessage(messageData);
-        return logAndCreateResponse(200, "MessageData was received");
+
+        try {
+            int cid = messageData.getCid();
+
+            collaborations.addNewMessage(cid, messageData);
+            return logAndCreateResponse(200, "MessageData was received");
+        } catch (Exception e) {
+            return logAndCreateResponse(400, "Problem with storing the message");
+
+        }
     }
 
     @POST
-    @Path("/send")
-    public Response sendMessage(@QueryParam("from") String fromUser, @QueryParam("to") String toUser, @QueryParam("message") String msg) {
-        logCalledEndpoint("/send", new Parameter("from", fromUser), new Parameter("to", toUser), new Parameter("message", msg));
+    @Path("/{c_id}/send")
+    @Consumes(MediaType.TEXT_PLAIN)
+    public Response sendMessage(@QueryParam("from") String fromUser,
+                                @QueryParam("to") String toUser,
+                                @QueryParam("message") String msg,
+                                @PathParam("c_id") int cid,
+                                String data) {
+        logCalledEndpoint(String.format("/%d/send", cid), new Parameter("from", fromUser), new Parameter("to", toUser),
+                new Parameter("message", msg), new Parameter("data", data));
 
-        String message = createMessage(fromUser, toUser, msg);
+        if (msg == null) {
+            msg = data;
+        }
+        String message = createMessage(fromUser, toUser, msg, cid);
         logger.info("The created message is : " + message);
 
         try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
@@ -205,12 +189,45 @@ public class Messenger extends Application {
 
         return logAndCreateResponse(200, "MessageData was sent");
     }
+    //endregion
 
-    private String createMessage(String fromUser, String toUser, String msg) {
+    //region Start - Archive
+
+    @POST
+    @Path("/{c_id}/archive")
+    public Response archiveCollaboration(@PathParam("c_id") int cid, @QueryParam("id1") String user1, @QueryParam("id2") String user2) {
+        logCalledEndpoint(String.format("/%d/archive", cid), new Parameter("id1", user1), new Parameter("id2", user2));
+        String key = createCollaborationKey(user1, user2);
+        Collaborations c = collaborations.get(key);
+        c.archive(cid);
+        return logAndCreateResponse(200, String.format("Collaboration with id %d was archived", cid));
+    }
+
+
+    @POST
+    @Path("/start-new")
+    public Response startNewCommunication(@QueryParam("id1") String user1, @QueryParam("id2") String user2) {
+        logCalledEndpoint("/start-new", new Parameter("id1", user1), new Parameter("id2", user2));
+        String key = createCollaborationKey(user1, user2);
+        Collaborations collaborations = Messenger.collaborations.get(key);
+
+        if (collaborations == null) {
+            collaborations = new Collaborations(user1, user2);
+            Messenger.collaborations.put(key, collaborations);
+        }
+        collaborations.startNew();
+        int count = collaborations.getCount();
+        logger.info(String.format("Started new collaborations, count=%d between user-id=%s and user-id=%s", count, user1, user2));
+
+        return logAndCreateResponse(201, String.valueOf(count));
+    }
+    //endregion
+
+    private String createMessage(String fromUser, String toUser, String msg, int cid) {
         long time = System.currentTimeMillis();
         String key = createCollaborationKey(fromUser, toUser);
 
-        MessageData messageData = new MessageData(time, fromUser, toUser, key, msg);
+        MessageData messageData = new MessageData(time, cid, fromUser, toUser, key, msg);
 
         return gson.toJson(messageData, MessageData.class);
     }
@@ -236,6 +253,10 @@ public class Messenger extends Application {
         return writer.toString();
     }
 
+    private Collaborations getCollaboration(String user1, String user2) {
+        String key = createCollaborationKey(user1, user2);
+        return collaborations.get(key);
+    }
 
     private Response logAndCreateResponse(int responseCode, String msg) {
         String logMessage = "The returned message is: " + msg + " and return code is: " + String.valueOf(responseCode);
@@ -262,4 +283,16 @@ public class Messenger extends Application {
             return key + "=" + value;
         }
     }
+
+    static String createCollaborationKey(String userId1, String userId2) {
+        if (userId1 == null || userId2 == null || userId1.isEmpty() || userId2.isEmpty()) {
+            throw new NullPointerException("User ids can't be null or empty");
+        }
+        if (userId1.equals(userId2)) {
+            throw new IllegalArgumentException("Ids can't be the same");
+        }
+
+        return (userId1.compareTo(userId2) > 0) ? String.format("%s%d%s", userId1, userId1.hashCode(), userId2) : String.format("%s%d%s", userId2, userId2.hashCode(), userId1);
+    }
 }
+
