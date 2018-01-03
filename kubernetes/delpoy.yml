@@ -27,6 +27,8 @@ spec:
         env:
         - name: CSB_URL
           value: "csb-kafka:8080"
+        - name: SERVICE_URL
+          value: "messaging-service:8080"
         ports:
         - containerPort: 8080
           name: http
