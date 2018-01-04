@@ -168,7 +168,12 @@ public class Messenger extends Application {
         if (msg == null) {
             msg = data;
         }
-        String message = createMessage(fromUser, toUser, msg, cid);
+        String key = createCollaborationKey(fromUser, toUser);
+        Collaborations c = collaborations.get(key);
+        if (!c.isActive(cid)) {
+            return logAndCreateResponse(400, String.format("Can't send messages collaboration with id %d has been archived", cid));
+        }
+        String message = createMessage(fromUser, toUser, key, msg, cid);
         logger.info("The created message is : " + message);
 
         try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
@@ -199,8 +204,12 @@ public class Messenger extends Application {
         logCalledEndpoint(String.format("/%d/archive", cid), new Parameter("id1", user1), new Parameter("id2", user2));
         String key = createCollaborationKey(user1, user2);
         Collaborations c = collaborations.get(key);
-        c.archive(cid);
-        return logAndCreateResponse(200, String.format("Collaboration with id %d was archived", cid));
+        if (!c.isActive(cid)) {
+            return logAndCreateResponse(400, String.format("Can't archive collaboration with id %d has already been archived", cid));
+        } else {
+            c.archive(cid);
+            return logAndCreateResponse(200, String.format("Collaboration with id %d was archived", cid));
+        }
     }
 
 
@@ -223,9 +232,8 @@ public class Messenger extends Application {
     }
     //endregion
 
-    private String createMessage(String fromUser, String toUser, String msg, int cid) {
+    private String createMessage(String fromUser, String toUser,String key, String msg, int cid) {
         long time = System.currentTimeMillis();
-        String key = createCollaborationKey(fromUser, toUser);
 
         MessageData messageData = new MessageData(time, cid, fromUser, toUser, key, msg);
 

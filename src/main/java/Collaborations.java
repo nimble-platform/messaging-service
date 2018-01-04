@@ -65,6 +65,11 @@ public class Collaborations {
         sessions.add(count, new Session());
     }
 
+    public boolean isActive(int cid) {
+        Session s = sessions.get(cid);
+        return s.isActive();
+    }
+
     private class Session {
         private final LinkedList<MessageData> messages = new LinkedList<>();
         private final Object syncObject = new Object();
