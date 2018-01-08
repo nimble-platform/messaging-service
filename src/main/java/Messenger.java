@@ -41,6 +41,7 @@ public class Messenger extends Application {
 
     private final Gson gson = new Gson();
     private final String sendMessageUrl;
+    private final DBManager dbManager = new DBManager();
 
     public Messenger() {
         super();

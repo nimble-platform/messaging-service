@@ -29,6 +29,21 @@ spec:
           value: "csb-kafka:8080"
         - name: SERVICE_URL
           value: "messaging-service:8080"
+        - name: POSTGRES_URL
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: url
+        - name: POSTGRES_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: password
         ports:
         - containerPort: 8080
           name: http
