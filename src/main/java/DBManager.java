@@ -106,6 +106,7 @@ public class DBManager {
     }
 
     public void executeUpdateStatement(String statement) throws SQLException {
+        logger.info("Executing update statement - " + statement);
         PreparedStatement ps = connection.prepareStatement(statement);
         executeUpdate(ps);
     }

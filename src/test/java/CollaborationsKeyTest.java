@@ -6,30 +6,30 @@ import static org.junit.Assert.*;
 public class CollaborationsKeyTest {
     @Test
     public void testSameKey() {
-        CollaborationKey c1 = new CollaborationKey("moshe", "david");
-        CollaborationKey c2 = new CollaborationKey("david", "moshe");
+        String key1 = Common.createCollaborationKey("moshe", "david");
+        String key2 = Common.createCollaborationKey("david", "moshe");
 
-        Assert.assertEquals(c1.getKey(), c2.getKey());
+        Assert.assertEquals(key1, key2);
     }
 
     @Test
     public void testDifferentKey() {
-        CollaborationKey c1 = new CollaborationKey("moshe", "david");
-        CollaborationKey c2 = new CollaborationKey("rami", "moshe");
+        String key1 =  Common.createCollaborationKey("moshe", "david");
+        String key2 =  Common.createCollaborationKey("rami", "moshe");
 
-        Assert.assertNotEquals(c1.getKey(), c2.getKey());
+        Assert.assertNotEquals(key1, key2);
     }
 
     @Test
     public void testSimilarIdsDifferentKey() {
-        CollaborationKey c1 = new CollaborationKey("abc", "def");
-        CollaborationKey c2 = new CollaborationKey("ab", "cdef");
+        String key1 = Common.createCollaborationKey("abc", "def");
+        String key2 = Common.createCollaborationKey("ab", "cdef");
 
-        Assert.assertNotEquals(c1.getKey(), c2.getKey());
+        Assert.assertNotEquals(key1, key2);
 
-        c1 = new CollaborationKey("abcd", "ef");
-        c2 = new CollaborationKey("cdef", "ab");
+        key1 = Common.createCollaborationKey("abcd", "ef");
+        key2 = Common.createCollaborationKey("cdef", "ab");
 
-        Assert.assertNotEquals(c1.getKey(), c2.getKey());
+        Assert.assertNotEquals(key1, key2);
     }
 }
