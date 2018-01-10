@@ -100,6 +100,11 @@ public class DBManager {
         executeUpdate(statement);
     }
 
+    void archiveCollaboration(String cKey, int cid) throws SQLException {
+        PreparedStatement statement = QueriesManager.getArchiveCollaborationStatement(connection, activeTableName, cKey, cid);
+        executeUpdate(statement);
+    }
+
     public void executeUpdateStatement(String statement) throws SQLException {
         PreparedStatement ps = connection.prepareStatement(statement);
         executeUpdate(ps);
@@ -118,16 +123,14 @@ public class DBManager {
         return null;
     }
 
-    boolean isCollaborationActive(String user1, String user2, int cid) throws SQLException {
-        String key = Common.createCollaborationKey(user1, user2);
-        PreparedStatement statement = QueriesManager.getIsCollaborationActive(connection, activeTableName, key, cid);
+    boolean isCollaborationActive(String cKey, int cid) throws SQLException {
+        PreparedStatement statement = QueriesManager.getIsCollaborationActive(connection, activeTableName, cKey, cid);
         if (statement == null) {
             throw new NullPointerException("Failed to create statement");
         }
         try (ResultSet rs = statement.executeQuery()) {
-            String res = resultSetToString(rs);
-            System.out.println(res);
-            return false;
+            rs.next();
+            return rs.getBoolean(1);
         }
     }
 
