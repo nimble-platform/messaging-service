@@ -23,7 +23,7 @@ import javax.ws.rs.core.Response;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringWriter;
-import java.util.HashMap;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
 
@@ -39,20 +39,21 @@ public class Messenger extends Application {
     private final static String MESSAGING_TABLE = "test_messaging";
     private final static String ACTIVE_TABLE = "test_active";
 
-    private final static Map<String, Collaborations> collaborations = new HashMap<>();
+    private final Map<String, Collaborations> keyToCollaboration;
 
     private final Gson gson = new Gson();
     private final String sendMessageUrl;
     private final DBManager dbManager = new DBManager(MESSAGING_TABLE, ACTIVE_TABLE);
 
-    public Messenger() {
+//    TODO: add loading on start
+    public Messenger() throws IOException {
         super();
         logger.info("Subscribing to kafka topic");
 
         String csbUrl = System.getenv("CSB_URL");
         String serviceUrl = System.getenv("SERVICE_URL");
 
-        if (csbUrl == null || serviceUrl == null || csbUrl.isEmpty() || serviceUrl.isEmpty()) {
+        if (Common.isNullOrEmpty(csbUrl) || Common.isNullOrEmpty(serviceUrl)) {
             logger.error("Failed to initialize - missing URLs for connecting and receiving messages");
             throw new IllegalArgumentException("Missing URLs values");
         }
@@ -72,8 +73,11 @@ public class Messenger extends Application {
                 String res = inputStreamToString(response.getEntity().getContent());
                 logger.info("Successfully subscribed to CSB, response : " + res);
             }
+
+            keyToCollaboration = dbManager.loadCollaborations();
         } catch (Exception e) {
             logger.error(e);
+            throw e;
         }
     }
 
@@ -94,9 +98,9 @@ public class Messenger extends Application {
         logCalledEndpoint(String.format("/%d/latest", cid), new Parameter("from", source), new Parameter("target", target));
 
         String key = Common.createCollaborationKey(source, target);
-        Collaborations collaborations = Messenger.collaborations.get(key);
+        Collaborations collaborations = keyToCollaboration.get(key);
         if (collaborations == null) {
-            return logAndCreateResponse(404, String.format("No collaborations exists between the users '%s' and '%s'", source, target));
+            return logAndCreateResponse(404, String.format("No keyToCollaboration exists between the users '%s' and '%s'", source, target));
         }
         MessageData msg = collaborations.getLastMessageFrom(cid, source);
         if (msg == null) {
@@ -112,9 +116,9 @@ public class Messenger extends Application {
         logCalledEndpoint(String.format("/%d/all", cid), new Parameter("source", source), new Parameter("target", target));
 
         String key = Common.createCollaborationKey(source, target);
-        Collaborations collaborations = Messenger.collaborations.get(key);
+        Collaborations collaborations = keyToCollaboration.get(key);
         if (collaborations == null) {
-            return logAndCreateResponse(404, String.format("No collaborations exists between the users '%s' and '%s'", source, target));
+            return logAndCreateResponse(404, String.format("No keyToCollaboration exists between the users '%s' and '%s'", source, target));
         }
         List<MessageData> messages = collaborations.getAllMessagesFrom(cid, source);
         if (messages.size() == 0) {
@@ -140,9 +144,9 @@ public class Messenger extends Application {
             throw new NullPointerException("Message is null");
         }
         String key = messageData.getKey();
-        Collaborations collaborations = Messenger.collaborations.get(key);
+        Collaborations collaborations = keyToCollaboration.get(key);
         if (collaborations == null) {
-            logger.error("Something really bad has happened - received message for non existing collaborations key");
+            logger.error("Something really bad has happened - received message for non existing keyToCollaboration key");
             throw new NullPointerException("Collaborations is null");
         }
 
@@ -172,11 +176,15 @@ public class Messenger extends Application {
             msg = data;
         }
         String key = Common.createCollaborationKey(source, target);
-        Collaborations c = collaborations.get(key);
+        Collaborations c = keyToCollaboration.get(key);
         if (!c.isActive(cid)) {
             return logAndCreateResponse(400, String.format("Can't send messages collaboration with id %d has been archived", cid));
         }
-        String message = createMessage(source, target, key, msg, cid);
+
+        long time = System.currentTimeMillis();
+        MessageData messageData = new MessageData(time, cid, source, target, key, msg);
+        String message = gson.toJson(messageData, MessageData.class);
+
         logger.info("The created message is : " + message);
 
         try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
@@ -186,16 +194,21 @@ public class Messenger extends Application {
 
             HttpResponse response = httpclient.execute(httpPost);
             if (response.getStatusLine().getStatusCode() != 200) {
-                throw new IllegalAccessError("Failed to send the message");
-            } else {
-                String res = inputStreamToString(response.getEntity().getContent());
-                logger.info("Successfully sent message to CSB service : " + res);
+                return logAndCreateResponse(400, "Error during sending the message to CSB-service");
             }
-        } catch (Exception e) {
-            logger.error(e);
-        }
 
-        return logAndCreateResponse(200, "MessageData was sent");
+            String res = inputStreamToString(response.getEntity().getContent());
+            logger.info("Successfully sent message to CSB service : " + res);
+
+            logger.info("Sending the message to the database");
+            dbManager.addNewMessage(messageData);
+
+            return logAndCreateResponse(200, "MessageData was sent");
+
+        } catch (Throwable e) {
+            logger.error(e);
+            return logAndCreateResponse(400, "Error handling the send message - " + String.valueOf(e));
+        }
     }
     //endregion
 
@@ -203,14 +216,18 @@ public class Messenger extends Application {
 
     @POST
     @Path("/{c_id}/archive")
-    public Response archiveCollaboration(@PathParam("c_id") int cid, @QueryParam("id1") String user1, @QueryParam("id2") String user2) {
+    public Response archiveCollaboration(@PathParam("c_id") int cid, @QueryParam("id1") String user1, @QueryParam("id2") String user2) throws SQLException {
         logCalledEndpoint(String.format("/%d/archive", cid), new Parameter("id1", user1), new Parameter("id2", user2));
         String key = Common.createCollaborationKey(user1, user2);
-        Collaborations c = collaborations.get(key);
+        Collaborations c = keyToCollaboration.get(key);
         if (!c.isActive(cid)) {
             return logAndCreateResponse(400, String.format("Can't archive collaboration with id %d has already been archived", cid));
         } else {
             c.archive(cid);
+
+            logger.info("Archiving the collaboration at the Database");
+            dbManager.archiveCollaboration(key, cid);
+
             return logAndCreateResponse(200, String.format("Collaboration with id %d was archived", cid));
         }
     }
@@ -221,27 +238,23 @@ public class Messenger extends Application {
     public Response startNewCommunication(@QueryParam("id1") String user1, @QueryParam("id2") String user2) {
         logCalledEndpoint("/start-new", new Parameter("id1", user1), new Parameter("id2", user2));
         String key = Common.createCollaborationKey(user1, user2);
-        Collaborations collaborations = Messenger.collaborations.get(key);
+        Collaborations collaborations = keyToCollaboration.get(key);
 
         if (collaborations == null) {
             collaborations = new Collaborations(user1, user2);
-            Messenger.collaborations.put(key, collaborations);
+            keyToCollaboration.put(key, collaborations);
         }
         collaborations.startNew();
         int count = collaborations.getCount();
-        logger.info(String.format("Started new collaborations, count=%d between user-id=%s and user-id=%s", count, user1, user2));
+        logger.info(String.format("Started new keyToCollaboration, count=%d between user-id=%s and user-id=%s", count, user1, user2));
 
         return logAndCreateResponse(201, String.valueOf(count));
     }
     //endregion
 
-    private String createMessage(String source, String target,String key, String msg, int cid) {
-        long time = System.currentTimeMillis();
-
-        MessageData messageData = new MessageData(time, cid, source, target, key, msg);
-
-        return gson.toJson(messageData, MessageData.class);
-    }
+//    private String createMessage(String source, String target, String key, String msg, int cid) {
+//
+//    }
 
     private void logCalledEndpoint(String endpoint, Parameter... params) {
         StringBuilder sb = new StringBuilder(String.format("Called endpoint %s with params: ", endpoint));
@@ -266,7 +279,7 @@ public class Messenger extends Application {
 
     private Collaborations getCollaboration(String user1, String user2) {
         String key = Common.createCollaborationKey(user1, user2);
-        return collaborations.get(key);
+        return keyToCollaboration.get(key);
     }
 
     private Response logAndCreateResponse(int responseCode, String msg) {
@@ -294,7 +307,5 @@ public class Messenger extends Application {
             return key + "=" + value;
         }
     }
-
-
 }
 

@@ -10,6 +10,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Created by evgeniyh on 1/4/18.
@@ -153,5 +154,14 @@ public class DBManager {
             jsonArray.add(obj);
         }
         return jsonArray;
+    }
+
+    public Map<String, Collaborations> loadCollaborations() {
+
+
+
+
+
+        return null;
     }
 }
