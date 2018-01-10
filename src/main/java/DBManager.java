@@ -88,33 +88,29 @@ public class DBManager {
 
 //    TODO: maybe add check for connection is valid
 
-    boolean addNewMessage(MessageData m) throws SQLException {
+    void addNewMessage(MessageData m) throws SQLException {
         PreparedStatement statement = QueriesManager.getInsertIntoMessagingTable(
                 connection, messagingTableName, m.getKey(), m.getCid(), m.getFrom(), m.getTo(), m.getTimestamp(), m.getData());
-        return executeUpdate(statement);
+        executeUpdate(statement);
     }
 
 
-    boolean addNewCollaboration(String cKey, int cid) throws SQLException {
+    void addNewCollaboration(String cKey, int cid) throws SQLException {
         PreparedStatement statement = QueriesManager.getInsertNewActiveCollaborationStatment(connection, activeTableName, cKey, cid);
-        return executeUpdate(statement);
+        executeUpdate(statement);
     }
 
-    public boolean executeUpdateStatement(String statement) throws SQLException {
+    public void executeUpdateStatement(String statement) throws SQLException {
         PreparedStatement ps = connection.prepareStatement(statement);
-        return executeUpdate(ps);
+        executeUpdate(ps);
     }
 
-    private boolean executeUpdate(PreparedStatement statement) throws SQLException {
+    private void executeUpdate(PreparedStatement statement) throws SQLException {
         if (statement == null) {
             throw new NullPointerException("Failed to create statement");
         }
-        int rows = statement.executeUpdate();
-        if (rows != 1) {
-            logger.error("Failed to insert to the table");
-            return false;
-        }
-        return true;
+        int affectedRows = statement.executeUpdate();
+        logger.info(String.format("The update statement has affected %d lines", affectedRows));
     }
 
     List<MessageData> getAllMessages(String user1, String user2, int cid) {
