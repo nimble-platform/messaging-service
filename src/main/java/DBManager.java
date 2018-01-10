@@ -90,7 +90,7 @@ public class DBManager {
 
     void addNewMessage(MessageData m) throws SQLException {
         PreparedStatement statement = QueriesManager.getInsertIntoMessagingTable(
-                connection, messagingTableName, m.getKey(), m.getCid(), m.getFrom(), m.getTo(), m.getTimestamp(), m.getData());
+                connection, messagingTableName, m.getKey(), m.getCid(), m.getSource(), m.getTarget(), m.getTimestamp(), m.getData());
         executeUpdate(statement);
     }
 

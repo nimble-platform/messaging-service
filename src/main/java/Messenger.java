@@ -90,17 +90,17 @@ public class Messenger extends Application {
 
     @GET
     @Path("/{c_id}/latest")
-    public Response getLatestFrom(@QueryParam("from") String fromUser, @QueryParam("to") String toUser, @PathParam("c_id") int cid) {
-        logCalledEndpoint(String.format("/%d/latest", cid), new Parameter("from", fromUser), new Parameter("to", toUser));
+    public Response getLatestFrom(@QueryParam("source") String source, @QueryParam("target") String target, @PathParam("c_id") int cid) {
+        logCalledEndpoint(String.format("/%d/latest", cid), new Parameter("from", source), new Parameter("target", target));
 
-        String key = Common.createCollaborationKey(fromUser, toUser);
+        String key = Common.createCollaborationKey(source, target);
         Collaborations collaborations = Messenger.collaborations.get(key);
         if (collaborations == null) {
-            return logAndCreateResponse(404, String.format("No collaborations exists between the users '%s' and '%s'", fromUser, toUser));
+            return logAndCreateResponse(404, String.format("No collaborations exists between the users '%s' and '%s'", source, target));
         }
-        MessageData msg = collaborations.getLastMessageFrom(cid, fromUser);
+        MessageData msg = collaborations.getLastMessageFrom(cid, source);
         if (msg == null) {
-            return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", fromUser, toUser));
+            return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", source, target));
         }
 
         return logAndCreateResponse(200, msg.getData());
@@ -108,17 +108,17 @@ public class Messenger extends Application {
 
     @GET
     @Path("/{c_id}/all")
-    public Response getAllFrom(@QueryParam("from") String fromUser, @QueryParam("to") String toUser, @PathParam("c_id") int cid) {
-        logCalledEndpoint(String.format("/%d/all", cid), new Parameter("from", fromUser), new Parameter("to", toUser));
+    public Response getAllFrom(@QueryParam("source") String source, @QueryParam("target") String target, @PathParam("c_id") int cid) {
+        logCalledEndpoint(String.format("/%d/all", cid), new Parameter("source", source), new Parameter("target", target));
 
-        String key = Common.createCollaborationKey(fromUser, toUser);
+        String key = Common.createCollaborationKey(source, target);
         Collaborations collaborations = Messenger.collaborations.get(key);
         if (collaborations == null) {
-            return logAndCreateResponse(404, String.format("No collaborations exists between the users '%s' and '%s'", fromUser, toUser));
+            return logAndCreateResponse(404, String.format("No collaborations exists between the users '%s' and '%s'", source, target));
         }
-        List<MessageData> messages = collaborations.getAllMessagesFrom(cid, fromUser);
+        List<MessageData> messages = collaborations.getAllMessagesFrom(cid, source);
         if (messages.size() == 0) {
-            return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", fromUser, toUser));
+            return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", source, target));
         }
         JsonArray array = new JsonArray();
         messages.forEach((m) -> array.add(m.getData()));
@@ -160,23 +160,23 @@ public class Messenger extends Application {
     @POST
     @Path("/{c_id}/send")
     @Consumes(MediaType.TEXT_PLAIN)
-    public Response sendMessage(@QueryParam("from") String fromUser,
-                                @QueryParam("to") String toUser,
+    public Response sendMessage(@QueryParam("source") String source,
+                                @QueryParam("to") String target,
                                 @QueryParam("message") String msg,
                                 @PathParam("c_id") int cid,
                                 String data) {
-        logCalledEndpoint(String.format("/%d/send", cid), new Parameter("from", fromUser), new Parameter("to", toUser),
+        logCalledEndpoint(String.format("/%d/send", cid), new Parameter("source", source), new Parameter("target", target),
                 new Parameter("message", msg), new Parameter("data", data));
 
         if (msg == null) {
             msg = data;
         }
-        String key = Common.createCollaborationKey(fromUser, toUser);
+        String key = Common.createCollaborationKey(source, target);
         Collaborations c = collaborations.get(key);
         if (!c.isActive(cid)) {
             return logAndCreateResponse(400, String.format("Can't send messages collaboration with id %d has been archived", cid));
         }
-        String message = createMessage(fromUser, toUser, key, msg, cid);
+        String message = createMessage(source, target, key, msg, cid);
         logger.info("The created message is : " + message);
 
         try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
@@ -235,10 +235,10 @@ public class Messenger extends Application {
     }
     //endregion
 
-    private String createMessage(String fromUser, String toUser,String key, String msg, int cid) {
+    private String createMessage(String source, String target,String key, String msg, int cid) {
         long time = System.currentTimeMillis();
 
-        MessageData messageData = new MessageData(time, cid, fromUser, toUser, key, msg);
+        MessageData messageData = new MessageData(time, cid, source, target, key, msg);
 
         return gson.toJson(messageData, MessageData.class);
     }

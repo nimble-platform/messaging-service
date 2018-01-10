@@ -1,10 +1,6 @@
-import com.google.gson.JsonObject;
-
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -83,13 +79,13 @@ public class Collaborations {
 
         List<MessageData> getAllMessagesFrom(String user) {
             synchronized (syncObject) {
-                return messages.stream().filter((m) -> m.getFrom().equals(user)).collect(Collectors.toList());
+                return messages.stream().filter((m) -> m.getSource().equals(user)).collect(Collectors.toList());
             }
         }
 
         MessageData getLastMessageFrom(String user) {
             synchronized (syncObject) {
-                return messages.stream().filter((m) -> m.getFrom().equals(user)).findFirst().orElse(null);
+                return messages.stream().filter((m) -> m.getSource().equals(user)).findFirst().orElse(null);
             }
         }
 

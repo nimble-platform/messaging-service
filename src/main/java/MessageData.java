@@ -4,16 +4,16 @@
 public class MessageData {
     private final long timestamp;
     private final int cid;
-    private final String from;
-    private final String to;
+    private final String source;
+    private final String target;
     private final String key;
     private final String data;
 
-    public MessageData(long timestamp, int cid, String from, String to, String key, String data) {
+    public MessageData(long timestamp, int cid, String source, String target, String key, String data) {
         this.timestamp = timestamp;
         this.cid = cid;
-        this.from = from;
-        this.to = to;
+        this.source = source;
+        this.target = target;
         this.key = key;
         this.data = data;
     }
@@ -22,12 +22,12 @@ public class MessageData {
         return timestamp;
     }
 
-    public String getFrom() {
-        return from;
+    public String getSource() {
+        return source;
     }
 
-    public String getTo() {
-        return to;
+    public String getTarget() {
+        return target;
     }
 
     public String getKey() {
