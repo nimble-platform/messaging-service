@@ -36,12 +36,14 @@ import java.util.Map;
 public class Messenger extends Application {
     private final static Logger logger = Logger.getLogger(Messenger.class);
     private final static String MESSAGING_TOPIC = "test_messaging_topic";
+    private final static String MESSAGING_TABLE = "test_messaging";
+    private final static String ACTIVE_TABLE = "test_active";
 
     private final static Map<String, Collaborations> collaborations = new HashMap<>();
 
     private final Gson gson = new Gson();
     private final String sendMessageUrl;
-    private final DBManager dbManager = new DBManager();
+    private final DBManager dbManager = new DBManager(MESSAGING_TABLE, ACTIVE_TABLE);
 
     public Messenger() {
         super();
@@ -91,7 +93,7 @@ public class Messenger extends Application {
     public Response getLatestFrom(@QueryParam("from") String fromUser, @QueryParam("to") String toUser, @PathParam("c_id") int cid) {
         logCalledEndpoint(String.format("/%d/latest", cid), new Parameter("from", fromUser), new Parameter("to", toUser));
 
-        String key = createCollaborationKey(fromUser, toUser);
+        String key = Common.createCollaborationKey(fromUser, toUser);
         Collaborations collaborations = Messenger.collaborations.get(key);
         if (collaborations == null) {
             return logAndCreateResponse(404, String.format("No collaborations exists between the users '%s' and '%s'", fromUser, toUser));
@@ -101,7 +103,7 @@ public class Messenger extends Application {
             return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", fromUser, toUser));
         }
 
-        return logAndCreateResponse(200, msg.getMessage());
+        return logAndCreateResponse(200, msg.getData());
     }
 
     @GET
@@ -109,7 +111,7 @@ public class Messenger extends Application {
     public Response getAllFrom(@QueryParam("from") String fromUser, @QueryParam("to") String toUser, @PathParam("c_id") int cid) {
         logCalledEndpoint(String.format("/%d/all", cid), new Parameter("from", fromUser), new Parameter("to", toUser));
 
-        String key = createCollaborationKey(fromUser, toUser);
+        String key = Common.createCollaborationKey(fromUser, toUser);
         Collaborations collaborations = Messenger.collaborations.get(key);
         if (collaborations == null) {
             return logAndCreateResponse(404, String.format("No collaborations exists between the users '%s' and '%s'", fromUser, toUser));
@@ -119,7 +121,7 @@ public class Messenger extends Application {
             return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", fromUser, toUser));
         }
         JsonArray array = new JsonArray();
-        messages.forEach((m) -> array.add(m.getMessage()));
+        messages.forEach((m) -> array.add(m.getData()));
 
         return logAndCreateResponse(200, gson.toJson(array));
     }
@@ -169,7 +171,7 @@ public class Messenger extends Application {
         if (msg == null) {
             msg = data;
         }
-        String key = createCollaborationKey(fromUser, toUser);
+        String key = Common.createCollaborationKey(fromUser, toUser);
         Collaborations c = collaborations.get(key);
         if (!c.isActive(cid)) {
             return logAndCreateResponse(400, String.format("Can't send messages collaboration with id %d has been archived", cid));
@@ -203,7 +205,7 @@ public class Messenger extends Application {
     @Path("/{c_id}/archive")
     public Response archiveCollaboration(@PathParam("c_id") int cid, @QueryParam("id1") String user1, @QueryParam("id2") String user2) {
         logCalledEndpoint(String.format("/%d/archive", cid), new Parameter("id1", user1), new Parameter("id2", user2));
-        String key = createCollaborationKey(user1, user2);
+        String key = Common.createCollaborationKey(user1, user2);
         Collaborations c = collaborations.get(key);
         if (!c.isActive(cid)) {
             return logAndCreateResponse(400, String.format("Can't archive collaboration with id %d has already been archived", cid));
@@ -218,7 +220,7 @@ public class Messenger extends Application {
     @Path("/start-new")
     public Response startNewCommunication(@QueryParam("id1") String user1, @QueryParam("id2") String user2) {
         logCalledEndpoint("/start-new", new Parameter("id1", user1), new Parameter("id2", user2));
-        String key = createCollaborationKey(user1, user2);
+        String key = Common.createCollaborationKey(user1, user2);
         Collaborations collaborations = Messenger.collaborations.get(key);
 
         if (collaborations == null) {
@@ -263,7 +265,7 @@ public class Messenger extends Application {
     }
 
     private Collaborations getCollaboration(String user1, String user2) {
-        String key = createCollaborationKey(user1, user2);
+        String key = Common.createCollaborationKey(user1, user2);
         return collaborations.get(key);
     }
 
@@ -293,15 +295,6 @@ public class Messenger extends Application {
         }
     }
 
-    static String createCollaborationKey(String userId1, String userId2) {
-        if (userId1 == null || userId2 == null || userId1.isEmpty() || userId2.isEmpty()) {
-            throw new NullPointerException("User ids can't be null or empty");
-        }
-        if (userId1.equals(userId2)) {
-            throw new IllegalArgumentException("Ids can't be the same");
-        }
 
-        return (userId1.compareTo(userId2) > 0) ? String.format("%s%d%s", userId1, userId1.hashCode(), userId2) : String.format("%s%d%s", userId2, userId2.hashCode(), userId1);
-    }
 }
 

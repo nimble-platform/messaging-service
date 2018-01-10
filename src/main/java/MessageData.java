@@ -7,15 +7,15 @@ public class MessageData {
     private final String from;
     private final String to;
     private final String key;
-    private final String message;
+    private final String data;
 
-    public MessageData(long timestamp, int cid, String from, String to, String key, String message) {
+    public MessageData(long timestamp, int cid, String from, String to, String key, String data) {
         this.timestamp = timestamp;
         this.cid = cid;
         this.from = from;
         this.to = to;
         this.key = key;
-        this.message = message;
+        this.data = data;
     }
 
     public long getTimestamp() {
@@ -34,8 +34,8 @@ public class MessageData {
         return key;
     }
 
-    public String getMessage() {
-        return message;
+    public String getData() {
+        return data;
     }
 
     public int getCid() {

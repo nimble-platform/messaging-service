@@ -17,7 +17,7 @@ public class Collaborations {
     private final ArrayList<Session> sessions = new ArrayList<>();
 
     public Collaborations(String user1, String user2) {
-        this.key = Messenger.createCollaborationKey(user1, user2);
+        this.key = Common.createCollaborationKey(user1, user2);
     }
 
     public void addNewMessage(int cid, MessageData messageData) throws IllegalAccessException {

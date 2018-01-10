@@ -4,6 +4,7 @@ import org.apache.log4j.Logger;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -18,8 +19,16 @@ public class DBManager {
     private final static Logger logger = Logger.getLogger(DBManager.class);
     private Connection connection;
     private final String urlTemplate = "jdbc:postgresql://";
+    private final String messagingTableName;
+    private final String activeTableName;
 
-    public DBManager() {
+    public DBManager(String messagingTableName, String activeTableName) {
+        if (Common.isNullOrEmpty(messagingTableName) || Common.isNullOrEmpty(activeTableName)) {
+            throw new NullPointerException("Tables can't be null or empty");
+        }
+        this.messagingTableName = messagingTableName;
+        this.activeTableName = activeTableName;
+
         try {
             Class.forName("org.postgresql.Driver"); // Check that the driver is ok
 
@@ -32,48 +41,80 @@ public class DBManager {
             }
 
             connection = DriverManager.getConnection(urlTemplate + url, user, password);
-            String query = "SELECT table_name FROM information_schema.tables WHERE table_schema='public'";
-//            String query = "SELECT table_name FROM information_schema.tables WHERE table_schema='public'";
-//            String query = "CREATE TABLE TEST_TABLE(\n" +
-//                    "   ID INT PRIMARY KEY     NOT NULL,\n" +
-//                    "   MESSAGE        TEXT    NOT NULL);";
-            logger.debug("Executing query " + query);
-            try (Statement st = connection.createStatement();
-                 ResultSet rs = st.executeQuery(query)) {
-                logger.debug("Query executed successfully ");
-                if (!rs.isBeforeFirst()) {
-                    logger.info("EMPTY !!!");
-                } else {
-                    ResultSetMetaData rsmd = rs.getMetaData();
-                    int columnsNumber = rsmd.getColumnCount();
-                    System.out.print(rsmd.getColumnName(1));
-                    for (int i = 2; i < columnsNumber; i++) {
-                        System.out.print(", " + rsmd.getColumnName(i));
-                    }
-                    System.out.println("");
-                    while (rs.next()) {
-                        System.out.print(rs.getString(1));
-
-                        for (int i = 2; i <= columnsNumber; i++) {
-                            System.out.print(", " + rs.getString(i));
-                        }
-                        System.out.println("");
-                    }
-//                JsonArray table = resultSetToJsonArray(rs);
-//                logger.info(table.toString().replace("{", "\n{"));
-                }
-            }
         } catch (Exception e) {
             connection = null;
             logger.error("Failed to connect to the db", e);
         }
     }
 
+
+    String executeQuery(String query) throws SQLException {
+        logger.debug("Executing query " + query);
+
+        String result = null;
+        try (Statement st = connection.createStatement();
+             ResultSet rs = st.executeQuery(query)) {
+            logger.debug("Query executed successfully ");
+            if (!rs.isBeforeFirst()) {
+                logger.info("Query result was empty !!!");
+            } else {
+                result = resultSetToString(rs);
+                logger.debug("The result of the query is :\n" + result);
+            }
+        }
+        return result;
+    }
+
+    private String resultSetToString(ResultSet rs) throws SQLException {
+        StringBuilder sb = new StringBuilder();
+
+        ResultSetMetaData rsmd = rs.getMetaData();
+        int columnsNumber = rsmd.getColumnCount();
+        sb.append(rsmd.getColumnName(1));
+        for (int i = 2; i <= columnsNumber; i++) {
+            sb.append(", ").append(rsmd.getColumnName(i));
+        }
+        sb.append("\n");
+        while (rs.next()) {
+            sb.append(rs.getString(1));
+
+            for (int i = 2; i <= columnsNumber; i++) {
+                sb.append(", ").append(rs.getString(i));
+            }
+            sb.append("\n");
+        }
+        return sb.toString();
+    }
+
+//    TODO: maybe add check for connection is valid
+
     boolean addNewMessage(MessageData m) throws SQLException {
+        PreparedStatement statement = QueriesManager.getInsertIntoMessagingTable(
+                connection, messagingTableName, m.getKey(), m.getCid(), m.getFrom(), m.getTo(), m.getTimestamp(), m.getData());
+        return executeUpdate(statement);
+    }
 
-        return false;
 
+    boolean addNewCollaboration(String cKey, int cid) throws SQLException {
+        PreparedStatement statement = QueriesManager.getInsertNewActiveCollaborationStatment(connection, activeTableName, cKey, cid);
+        return executeUpdate(statement);
+    }
 
+    public boolean executeUpdateStatement(String statement) throws SQLException {
+        PreparedStatement ps = connection.prepareStatement(statement);
+        return executeUpdate(ps);
+    }
+
+    private boolean executeUpdate(PreparedStatement statement) throws SQLException {
+        if (statement == null) {
+            throw new NullPointerException("Failed to create statement");
+        }
+        int rows = statement.executeUpdate();
+        if (rows != 1) {
+            logger.error("Failed to insert to the table");
+            return false;
+        }
+        return true;
     }
 
     List<MessageData> getAllMessages(String user1, String user2, int cid) {
@@ -81,9 +122,17 @@ public class DBManager {
         return null;
     }
 
-    boolean isCollaborationActive(String user1, String user2, int cid) {
-
-        return false;
+    boolean isCollaborationActive(String user1, String user2, int cid) throws SQLException {
+        String key = Common.createCollaborationKey(user1, user2);
+        PreparedStatement statement = QueriesManager.getIsCollaborationActive(connection, activeTableName, key, cid);
+        if (statement == null) {
+            throw new NullPointerException("Failed to create statement");
+        }
+        try (ResultSet rs = statement.executeQuery()) {
+            String res = resultSetToString(rs);
+            System.out.println(res);
+            return false;
+        }
     }
 
     private JsonArray resultSetToJsonArray(ResultSet resultSet) throws Exception {
