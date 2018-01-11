@@ -31,7 +31,7 @@ public class DBManager {
     private final int TIME_INDEX = 5;
     private final int DATA_INDEX = 6;
 
-    private final int ACTIVE_INDEX = 2;
+    private final int ACTIVE_INDEX = 3;
 
     public DBManager(String messagingTableName, String activeTableName) {
         if (Common.isNullOrEmpty(messagingTableName) || Common.isNullOrEmpty(activeTableName)) {
@@ -68,6 +68,7 @@ public class DBManager {
             sb.append(", ").append(rsmd.getColumnName(i));
         }
         sb.append("\n");
+
         while (rs.next()) {
             sb.append(rs.getString(1));
 
@@ -99,12 +100,12 @@ public class DBManager {
     }
 
     public void executeUpdateStatement(String statement) throws SQLException {
-        logger.info("Executing update statement - " + statement);
         PreparedStatement ps = connection.prepareStatement(statement);
         executeUpdate(ps);
     }
 
     private void executeUpdate(PreparedStatement statement) throws SQLException {
+        logger.info("Executing update statement - " + statement);
         if (statement == null) {
             throw new NullPointerException("Failed to create statement");
         }
@@ -148,19 +149,21 @@ public class DBManager {
         return jsonArray;
     }
 
-    public Map<String, Collaborations> loadCollaborations() throws SQLException {
+    private Map<String, Collaborations> loadMessages() throws SQLException {
         Map<String, Collaborations> keyToCollaboration = new HashMap<>();
 
         String allRecordsQuery = "SELECT * FROM " + messagingTableName;
-        try (Statement st = connection.createStatement()) {
-            ResultSet rs = executeQuery(st, allRecordsQuery);
-            while (rs.next()) {
-                String ckey = rs.getString(KEY_INDEX);
-                int sessionId = rs.getInt(SESSION_ID_INDEX);
-                String source = rs.getString(SOURCE_INDEX);
-                String target = rs.getString(TARGET_INDEX);
-                long time = rs.getLong(TIME_INDEX);
-                String data = rs.getString(DATA_INDEX);
+
+        try (Statement st = connection.createStatement();
+             ResultSet messagesResults = executeQuery(st, allRecordsQuery)) {
+
+            while (messagesResults.next()) {
+                String ckey = messagesResults.getString(KEY_INDEX);
+                int sessionId = messagesResults.getInt(SESSION_ID_INDEX);
+                String source = messagesResults.getString(SOURCE_INDEX);
+                String target = messagesResults.getString(TARGET_INDEX);
+                long time = messagesResults.getLong(TIME_INDEX);
+                String data = messagesResults.getString(DATA_INDEX);
 
                 Collaborations c = keyToCollaboration.get(ckey);
                 if (c == null) {
@@ -173,14 +176,23 @@ public class DBManager {
                 }
                 c.addNewMessage(sessionId, new MessageData(time, sessionId, source, target, ckey, data));
             }
+        }
+        return keyToCollaboration;
+    }
 
-            String allActives = "SELECT * FROM " + activeTableName;
-            rs = executeQuery(st, allActives);
-            while (rs.next()) {
-                String ckey = rs.getString(KEY_INDEX);
-                int sid = rs.getInt(SESSION_ID_INDEX);
+    public Map<String, Collaborations> loadCollaborations() throws SQLException {
+        Map<String, Collaborations> keyToCollaboration = loadMessages();
 
-                if (rs.getBoolean(ACTIVE_INDEX)) {
+        String allActivesQuery = "SELECT * FROM " + activeTableName;
+
+        try (Statement st = connection.createStatement();
+             ResultSet activeResults = executeQuery(st, allActivesQuery)) {
+//            System.out.println(resultSetToString(activeResults));
+            while (activeResults.next()) {
+                String ckey = activeResults.getString(KEY_INDEX);
+                int sid = activeResults.getInt(SESSION_ID_INDEX);
+
+                if (activeResults.getBoolean(ACTIVE_INDEX)) {
                     logger.info(String.format("Collaboration key %s and id %d is still active - continuing", ckey, sid));
                 } else {
                     logger.info(String.format("Collaboration key %s and id %d is archived - Archiving", ckey, sid));

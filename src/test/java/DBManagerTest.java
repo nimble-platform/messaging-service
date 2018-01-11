@@ -15,7 +15,7 @@ public class DBManagerTest {
     private static final String user2 = "david";
     private static final int sid = 1;
     private static final long timestamp = 232131212;
-    private static final String simpleData= "this is simple data test";
+    private static final String simpleData = "this is simple data test";
 
 
     private static final String cKey = Common.createCollaborationKey(user1, user2);
@@ -30,10 +30,12 @@ public class DBManagerTest {
     }
 
     @Test
-    public void addSingleRowTest() {
+    public void addSingleRowNoExceptionsTest() {
         try {
-            dbManager.addNewMessage(new MessageData(timestamp, sid, user1, user2, cKey, simpleData));
-            dbManager.addNewCollaboration(cKey, sid);
+            int randSid = getRansomNumber();
+
+            dbManager.addNewMessage(new MessageData((int) (timestamp * Math.random()), randSid, user1, user2, cKey, simpleData));
+            dbManager.addNewCollaboration(cKey, randSid);
 
 //            System.out.println(dbManager.executeQuery("SELECT * FROM " + messagingTableName));
 //            System.out.println(dbManager.executeQuery("SELECT * FROM " + activeTableName));
@@ -44,28 +46,91 @@ public class DBManagerTest {
     }
 
     @Test
-    public void testLoadingSimpleExistingCollaborations (){
+    public void testLoadingSimpleExistingCollaborations() {
         try {
-            deleteTables();
-            createTables();
+            int randSid = getRansomNumber();
+//            startFresshMessagingTable();
 
-            dbManager.addNewMessage(new MessageData(timestamp, sid, user1, user2, cKey, simpleData));
-            dbManager.addNewCollaboration(cKey, sid);
+            dbManager.addNewMessage(new MessageData((int) (timestamp * Math.random()), randSid, user1, user2, cKey, simpleData));
+            dbManager.addNewCollaboration(cKey, randSid);
 
             Map<String, Collaborations> keysToCollaborations = dbManager.loadCollaborations();
             Collaborations c = keysToCollaborations.get(cKey);
             Assert.assertNotNull(c);
-            Assert.assertTrue("Collaboration should be active", c.isActive(sid));
-            MessageData m = c.getLastMessageFrom(sid, user1);
+            Assert.assertTrue("Collaboration should be active", c.isActive(randSid));
+            MessageData m = c.getLastMessageFrom(randSid, user1);
             Assert.assertNotNull(m);
             Assert.assertEquals(m.getData(), simpleData);
-            Assert.assertEquals(1, c.getAllMessagesFrom(sid, user1).size());
+            Assert.assertEquals(1, c.getAllMessagesFrom(randSid, user1).size());
         } catch (Exception e) {
             e.printStackTrace();
             Assert.fail();
         }
     }
 
+    private int getRansomNumber() {
+        return (int) (100000 * Math.random());
+    }
+
+    private static void startFresshMessagingTable() throws SQLException {
+        runUpdateStatement(dbManager, "DROP TABLE " + messagingTableName);
+        runUpdateStatement(dbManager, QueriesManager.getCreateMessagingTable(messagingTableName));
+    }
+
+    @Test
+    public void testLoadingComplexCollaborations() {
+        try {
+            int randomStart = getRansomNumber();
+//            startFresshMessagingTable();
+
+            dbManager.addNewMessage(new MessageData(timestamp + 1, randomStart, user1, user2, cKey, simpleData + String.valueOf(0)));
+            dbManager.addNewMessage(new MessageData(timestamp + 2, randomStart, user1, user2, cKey, simpleData + String.valueOf(1)));
+            dbManager.addNewMessage(new MessageData(timestamp + 3, randomStart, user1, user2, cKey, simpleData + String.valueOf(2)));
+            dbManager.addNewMessage(new MessageData(timestamp + 4, randomStart, user2, user1, cKey, simpleData + String.valueOf(3)));
+            dbManager.addNewCollaboration(cKey, randomStart);
+//            Map<String, Collaborations> keysToCollaborations1 = dbManager.loadCollaborations();
+
+            for (int i = 1; i < 10; i++) {
+                dbManager.addNewMessage(new MessageData(timestamp, randomStart+i, user1, user2, cKey, simpleData + String.valueOf(i)));
+                dbManager.addNewCollaboration(cKey, randomStart+i);
+                if (i % 2 == 0) {
+                    dbManager.archiveCollaboration(cKey, randomStart+i);
+                }
+            }
+
+            Map<String, Collaborations> keysToCollaborations = dbManager.loadCollaborations();
+
+            Collaborations c = keysToCollaborations.get(cKey);
+            Assert.assertNotNull(c);
+
+            for (int i = 1; i < 10; i++) {
+                if (i % 2 == 0) {
+                    Assert.assertFalse("Collaboration should be archived", c.isActive(randomStart+i));
+                } else {
+                    Assert.assertTrue("Collaboration should be active", c.isActive(randomStart+i));
+                }
+                MessageData m = c.getLastMessageFrom(randomStart+i, user1);
+                Assert.assertNotNull(m);
+                Assert.assertEquals(m.getData(), simpleData + String.valueOf(i));
+                Assert.assertEquals(1, c.getAllMessagesFrom(randomStart+i, user1).size());
+            }
+
+            Assert.assertTrue("Collaboration should be active", c.isActive(randomStart));
+
+            MessageData m = c.getLastMessageFrom(randomStart, user2);
+            Assert.assertNotNull(m);
+            Assert.assertEquals(m.getData(), simpleData + String.valueOf(3));
+            Assert.assertEquals(1, c.getAllMessagesFrom(randomStart, user2).size());
+
+            m = c.getLastMessageFrom(randomStart, user1);
+            Assert.assertNotNull(m);
+            Assert.assertEquals(m.getData(), simpleData + String.valueOf(2));
+            Assert.assertEquals(3, c.getAllMessagesFrom(randomStart, user1).size());
+        } catch (Exception e) {
+            e.printStackTrace();
+            Assert.fail();
+        }
+    }
 
     @Test
     public void archiveCollaboration() {
