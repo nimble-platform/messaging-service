@@ -1,6 +1,9 @@
+import javax.ws.rs.NotAuthorizedException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -8,61 +11,64 @@ import java.util.stream.Collectors;
  */
 
 public class Collaborations {
-    private int count = -1;
-    private final String key;
-    private final ArrayList<Session> sessions = new ArrayList<>();
+//    private int count = -1;
+//    private final String key;
+    private final Map<Integer, Session> sessions = new HashMap<>();
 
-    public Collaborations(String user1, String user2) {
-        this.key = Common.createCollaborationKey(user1, user2);
+    public Collaborations() {
+//        this.key = Common.createCollaborationKey(user1, user2);
     }
 
-    public void addNewMessage(int cid, MessageData messageData) throws IllegalAccessException {
-        Session s = sessions.get(cid);
+    public boolean isSessionExists(int sessionId) {
+        return sessions.containsKey(sessionId);
+    }
+
+    public void addNewMessage(int sid, MessageData messageData) {
+        Session s = sessions.get(sid);
         if (s == null) {
-            throw new IllegalArgumentException(String.format("Collaboration with id %d doesn't exists", cid));
+            throw new IllegalArgumentException(String.format("Collaboration with id %d doesn't exists", sid));
         }
         if (!s.isActive()) {
-            throw new IllegalAccessException(String.format("Can't add collaboration with id %d has already been archived", cid));
+            throw new NotAuthorizedException(String.format("Can't add collaboration with id %d has already been archived", sid));
         }
         s.addNewMessage(messageData);
     }
 
-    public List<MessageData> getAllMessagesFrom(int cid, String user) {
-        Session s = sessions.get(cid);
+    public List<MessageData> getAllMessagesFrom(int sid, String user) {
+        Session s = sessions.get(sid);
         if (s == null) {
-            throw new IllegalArgumentException(String.format("Collaboration with id %d doesn't exists", cid));
+            throw new IllegalArgumentException(String.format("Collaboration with id %d doesn't exists", sid));
         }
         return s.getAllMessagesFrom(user);
     }
 
-    public MessageData getLastMessageFrom(int cid, String user) {
-        Session s = sessions.get(cid);
+    public MessageData getLastMessageFrom(int sid, String user) {
+        Session s = sessions.get(sid);
         if (s == null) {
-            throw new IllegalArgumentException(String.format("Collaboration with id %d doesn't exists", cid));
+            throw new IllegalArgumentException(String.format("Collaboration with id %d doesn't exists", sid));
         }
         return s.getLastMessageFrom(user);
     }
 
 
-    public int getCount() {
-        return count;
+    public int getSessionsCount() {
+        return sessions.size();
     }
 
-    public void archive(int cid) {
-        Session s = sessions.get(cid);
+    public void archive(int sid) {
+        Session s = sessions.get(sid);
         if (!s.isActive()) {
-            throw new IllegalStateException(String.format("Can't archive - %d already been archived", cid));
+            throw new IllegalStateException(String.format("Can't archive - %d already been archived", sid));
         }
         s.archive();
     }
 
-    public void startNew() {
-        count++;
-        sessions.add(count, new Session());
+    public void startNewSession(int sid) {
+        sessions.put(sid, new Session());
     }
 
-    public boolean isActive(int cid) {
-        Session s = sessions.get(cid);
+    public boolean isActive(int sid) {
+        Session s = sessions.get(sid);
         return s.isActive();
     }
 

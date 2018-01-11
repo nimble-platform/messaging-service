@@ -3,15 +3,15 @@
  */
 public class MessageData {
     private final long timestamp;
-    private final int cid;
+    private final int sessionId;
     private final String source;
     private final String target;
     private final String key;
     private final String data;
 
-    public MessageData(long timestamp, int cid, String source, String target, String key, String data) {
+    public MessageData(long timestamp, int sessionId, String source, String target, String key, String data) {
         this.timestamp = timestamp;
-        this.cid = cid;
+        this.sessionId = sessionId;
         this.source = source;
         this.target = target;
         this.key = key;
@@ -38,8 +38,8 @@ public class MessageData {
         return data;
     }
 
-    public int getCid() {
-        return cid;
+    public int getSessionId() {
+        return sessionId;
     }
 
     @Override

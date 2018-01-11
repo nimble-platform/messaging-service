@@ -46,7 +46,7 @@ public class Messenger extends Application {
     private final DBManager dbManager = new DBManager(MESSAGING_TABLE, ACTIVE_TABLE);
 
 //    TODO: add loading on start
-    public Messenger() throws IOException {
+    public Messenger() throws Exception {
         super();
         logger.info("Subscribing to kafka topic");
 
@@ -74,6 +74,7 @@ public class Messenger extends Application {
                 logger.info("Successfully subscribed to CSB, response : " + res);
             }
 
+            logger.info("Loading the collaborations from the database");
             keyToCollaboration = dbManager.loadCollaborations();
         } catch (Exception e) {
             logger.error(e);
@@ -93,16 +94,16 @@ public class Messenger extends Application {
     //region Read Messages
 
     @GET
-    @Path("/{c_id}/latest")
-    public Response getLatestFrom(@QueryParam("source") String source, @QueryParam("target") String target, @PathParam("c_id") int cid) {
-        logCalledEndpoint(String.format("/%d/latest", cid), new Parameter("from", source), new Parameter("target", target));
+    @Path("/{s_id}/latest")
+    public Response getLatestFrom(@QueryParam("source") String source, @QueryParam("target") String target, @PathParam("s_id") int sid) {
+        logCalledEndpoint(String.format("/%d/latest", sid), new Parameter("from", source), new Parameter("target", target));
 
         String key = Common.createCollaborationKey(source, target);
         Collaborations collaborations = keyToCollaboration.get(key);
         if (collaborations == null) {
             return logAndCreateResponse(404, String.format("No keyToCollaboration exists between the users '%s' and '%s'", source, target));
         }
-        MessageData msg = collaborations.getLastMessageFrom(cid, source);
+        MessageData msg = collaborations.getLastMessageFrom(sid, source);
         if (msg == null) {
             return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", source, target));
         }
@@ -111,16 +112,16 @@ public class Messenger extends Application {
     }
 
     @GET
-    @Path("/{c_id}/all")
-    public Response getAllFrom(@QueryParam("source") String source, @QueryParam("target") String target, @PathParam("c_id") int cid) {
-        logCalledEndpoint(String.format("/%d/all", cid), new Parameter("source", source), new Parameter("target", target));
+    @Path("/{s_id}/all")
+    public Response getAllFrom(@QueryParam("source") String source, @QueryParam("target") String target, @PathParam("s_id") int sid) {
+        logCalledEndpoint(String.format("/%d/all", sid), new Parameter("source", source), new Parameter("target", target));
 
         String key = Common.createCollaborationKey(source, target);
         Collaborations collaborations = keyToCollaboration.get(key);
         if (collaborations == null) {
             return logAndCreateResponse(404, String.format("No keyToCollaboration exists between the users '%s' and '%s'", source, target));
         }
-        List<MessageData> messages = collaborations.getAllMessagesFrom(cid, source);
+        List<MessageData> messages = collaborations.getAllMessagesFrom(sid, source);
         if (messages.size() == 0) {
             return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", source, target));
         }
@@ -151,9 +152,9 @@ public class Messenger extends Application {
         }
 
         try {
-            int cid = messageData.getCid();
+            int sid = messageData.getSessionId();
 
-            collaborations.addNewMessage(cid, messageData);
+            collaborations.addNewMessage(sid, messageData);
             return logAndCreateResponse(200, "MessageData was received");
         } catch (Exception e) {
             return logAndCreateResponse(400, "Problem with storing the message");
@@ -162,14 +163,14 @@ public class Messenger extends Application {
     }
 
     @POST
-    @Path("/{c_id}/send")
+    @Path("/{s_id}/send")
     @Consumes(MediaType.TEXT_PLAIN)
     public Response sendMessage(@QueryParam("source") String source,
                                 @QueryParam("to") String target,
                                 @QueryParam("message") String msg,
-                                @PathParam("c_id") int cid,
+                                @PathParam("s_id") int sid,
                                 String data) {
-        logCalledEndpoint(String.format("/%d/send", cid), new Parameter("source", source), new Parameter("target", target),
+        logCalledEndpoint(String.format("/%d/send", sid), new Parameter("source", source), new Parameter("target", target),
                 new Parameter("message", msg), new Parameter("data", data));
 
         if (msg == null) {
@@ -177,12 +178,12 @@ public class Messenger extends Application {
         }
         String key = Common.createCollaborationKey(source, target);
         Collaborations c = keyToCollaboration.get(key);
-        if (!c.isActive(cid)) {
-            return logAndCreateResponse(400, String.format("Can't send messages collaboration with id %d has been archived", cid));
+        if (!c.isActive(sid)) {
+            return logAndCreateResponse(400, String.format("Can't send messages collaboration with id %d has been archived", sid));
         }
 
         long time = System.currentTimeMillis();
-        MessageData messageData = new MessageData(time, cid, source, target, key, msg);
+        MessageData messageData = new MessageData(time, sid, source, target, key, msg);
         String message = gson.toJson(messageData, MessageData.class);
 
         logger.info("The created message is : " + message);
@@ -215,20 +216,20 @@ public class Messenger extends Application {
     //region Start - Archive
 
     @POST
-    @Path("/{c_id}/archive")
-    public Response archiveCollaboration(@PathParam("c_id") int cid, @QueryParam("id1") String user1, @QueryParam("id2") String user2) throws SQLException {
-        logCalledEndpoint(String.format("/%d/archive", cid), new Parameter("id1", user1), new Parameter("id2", user2));
+    @Path("/{s_id}/archive")
+    public Response archiveCollaboration(@PathParam("s_id") int sid, @QueryParam("id1") String user1, @QueryParam("id2") String user2) throws SQLException {
+        logCalledEndpoint(String.format("/%d/archive", sid), new Parameter("id1", user1), new Parameter("id2", user2));
         String key = Common.createCollaborationKey(user1, user2);
         Collaborations c = keyToCollaboration.get(key);
-        if (!c.isActive(cid)) {
-            return logAndCreateResponse(400, String.format("Can't archive collaboration with id %d has already been archived", cid));
+        if (!c.isActive(sid)) {
+            return logAndCreateResponse(400, String.format("Can't archive collaboration with id %d has already been archived", sid));
         } else {
-            c.archive(cid);
+            c.archive(sid);
 
             logger.info("Archiving the collaboration at the Database");
-            dbManager.archiveCollaboration(key, cid);
+            dbManager.archiveCollaboration(key, sid);
 
-            return logAndCreateResponse(200, String.format("Collaboration with id %d was archived", cid));
+            return logAndCreateResponse(200, String.format("Collaboration with id %d was archived", sid));
         }
     }
 
@@ -241,18 +242,18 @@ public class Messenger extends Application {
         Collaborations collaborations = keyToCollaboration.get(key);
 
         if (collaborations == null) {
-            collaborations = new Collaborations(user1, user2);
+            collaborations = new Collaborations();
             keyToCollaboration.put(key, collaborations);
         }
-        collaborations.startNew();
-        int count = collaborations.getCount();
-        logger.info(String.format("Started new keyToCollaboration, count=%d between user-id=%s and user-id=%s", count, user1, user2));
+        int count = collaborations.getSessionsCount();
+        collaborations.startNewSession(count + 1);
+        logger.info(String.format("Started new session, session id=%d between user-id=%s and user-id=%s", count, user1, user2));
 
         return logAndCreateResponse(201, String.valueOf(count));
     }
     //endregion
 
-//    private String createMessage(String source, String target, String key, String msg, int cid) {
+//    private String createMessage(String source, String target, String key, String msg, int sid) {
 //
 //    }
 

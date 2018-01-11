@@ -1,9 +1,11 @@
 import org.junit.AfterClass;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.sql.SQLException;
+import java.util.Map;
 
 public class DBManagerTest {
     private static final String messagingTableName = "test_messaging";
@@ -11,6 +13,11 @@ public class DBManagerTest {
 
     private static final String user1 = "moshe";
     private static final String user2 = "david";
+    private static final int sid = 1;
+    private static final long timestamp = 232131212;
+    private static final String simpleData= "this is simple data test";
+
+
     private static final String cKey = Common.createCollaborationKey(user1, user2);
 
     private static DBManager dbManager = new DBManager(messagingTableName, activeTableName);
@@ -25,8 +32,8 @@ public class DBManagerTest {
     @Test
     public void addSingleRowTest() {
         try {
-            dbManager.addNewMessage(new MessageData(123123123, 1, user1, user2, cKey, "hello"));
-            dbManager.addNewCollaboration(cKey, 1);
+            dbManager.addNewMessage(new MessageData(timestamp, sid, user1, user2, cKey, simpleData));
+            dbManager.addNewCollaboration(cKey, sid);
 
 //            System.out.println(dbManager.executeQuery("SELECT * FROM " + messagingTableName));
 //            System.out.println(dbManager.executeQuery("SELECT * FROM " + activeTableName));
@@ -37,16 +44,40 @@ public class DBManagerTest {
     }
 
     @Test
+    public void testLoadingSimpleExistingCollaborations (){
+        try {
+            deleteTables();
+            createTables();
+
+            dbManager.addNewMessage(new MessageData(timestamp, sid, user1, user2, cKey, simpleData));
+            dbManager.addNewCollaboration(cKey, sid);
+
+            Map<String, Collaborations> keysToCollaborations = dbManager.loadCollaborations();
+            Collaborations c = keysToCollaborations.get(cKey);
+            Assert.assertNotNull(c);
+            Assert.assertTrue("Collaboration should be active", c.isActive(sid));
+            MessageData m = c.getLastMessageFrom(sid, user1);
+            Assert.assertNotNull(m);
+            Assert.assertEquals(m.getData(), simpleData);
+            Assert.assertEquals(1, c.getAllMessagesFrom(sid, user1).size());
+        } catch (Exception e) {
+            e.printStackTrace();
+            Assert.fail();
+        }
+    }
+
+
+    @Test
     public void archiveCollaboration() {
         try {
-            int cid = (int) (Math.random() * 1000 + 5);
+            int sid = (int) (Math.random() * 1000 + 5);
 
-            dbManager.addNewCollaboration(cKey, cid);
+            dbManager.addNewCollaboration(cKey, sid);
 //            System.out.println(dbManager.executeQuery("SELECT * FROM " + activeTableName));
 
-            Assert.assertTrue(dbManager.isCollaborationActive(cKey, cid));
-            dbManager.archiveCollaboration(cKey, cid);
-            Assert.assertFalse(dbManager.isCollaborationActive(cKey, cid));
+            Assert.assertTrue(dbManager.isCollaborationActive(cKey, sid));
+            dbManager.archiveCollaboration(cKey, sid);
+            Assert.assertFalse(dbManager.isCollaborationActive(cKey, sid));
 
 //            System.out.println(dbManager.executeQuery("SELECT * FROM " + activeTableName));
         } catch (Exception e) {

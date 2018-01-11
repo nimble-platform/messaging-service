@@ -9,6 +9,7 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,6 +23,15 @@ public class DBManager {
     private final String urlTemplate = "jdbc:postgresql://";
     private final String messagingTableName;
     private final String activeTableName;
+
+    private final int KEY_INDEX = 1;
+    private final int SESSION_ID_INDEX = 2;
+    private final int SOURCE_INDEX = 3;
+    private final int TARGET_INDEX = 4;
+    private final int TIME_INDEX = 5;
+    private final int DATA_INDEX = 6;
+
+    private final int ACTIVE_INDEX = 2;
 
     public DBManager(String messagingTableName, String activeTableName) {
         if (Common.isNullOrEmpty(messagingTableName) || Common.isNullOrEmpty(activeTableName)) {
@@ -46,24 +56,6 @@ public class DBManager {
             connection = null;
             logger.error("Failed to connect to the db", e);
         }
-    }
-
-
-    String executeQuery(String query) throws SQLException {
-        logger.debug("Executing query " + query);
-
-        String result = null;
-        try (Statement st = connection.createStatement();
-             ResultSet rs = st.executeQuery(query)) {
-            logger.debug("Query executed successfully ");
-            if (!rs.isBeforeFirst()) {
-                logger.info("Query result was empty !!!");
-            } else {
-                result = resultSetToString(rs);
-                logger.debug("The result of the query is :\n" + result);
-            }
-        }
-        return result;
     }
 
     private String resultSetToString(ResultSet rs) throws SQLException {
@@ -91,18 +83,18 @@ public class DBManager {
 
     void addNewMessage(MessageData m) throws SQLException {
         PreparedStatement statement = QueriesManager.getInsertIntoMessagingTable(
-                connection, messagingTableName, m.getKey(), m.getCid(), m.getSource(), m.getTarget(), m.getTimestamp(), m.getData());
+                connection, messagingTableName, m.getKey(), m.getSessionId(), m.getSource(), m.getTarget(), m.getTimestamp(), m.getData());
         executeUpdate(statement);
     }
 
 
-    void addNewCollaboration(String cKey, int cid) throws SQLException {
-        PreparedStatement statement = QueriesManager.getInsertNewActiveCollaborationStatment(connection, activeTableName, cKey, cid);
+    void addNewCollaboration(String cKey, int sid) throws SQLException {
+        PreparedStatement statement = QueriesManager.getInsertNewActiveCollaborationStatment(connection, activeTableName, cKey, sid);
         executeUpdate(statement);
     }
 
-    void archiveCollaboration(String cKey, int cid) throws SQLException {
-        PreparedStatement statement = QueriesManager.getArchiveCollaborationStatement(connection, activeTableName, cKey, cid);
+    void archiveCollaboration(String cKey, int sid) throws SQLException {
+        PreparedStatement statement = QueriesManager.getArchiveCollaborationStatement(connection, activeTableName, cKey, sid);
         executeUpdate(statement);
     }
 
@@ -120,13 +112,13 @@ public class DBManager {
         logger.info(String.format("The update statement has affected %d lines", affectedRows));
     }
 
-    List<MessageData> getAllMessages(String user1, String user2, int cid) {
+    List<MessageData> getAllMessages(String user1, String user2, int sid) {
 
         return null;
     }
 
-    boolean isCollaborationActive(String cKey, int cid) throws SQLException {
-        PreparedStatement statement = QueriesManager.getIsCollaborationActive(connection, activeTableName, cKey, cid);
+    boolean isCollaborationActive(String cKey, int sid) throws SQLException {
+        PreparedStatement statement = QueriesManager.getIsCollaborationActive(connection, activeTableName, cKey, sid);
         if (statement == null) {
             throw new NullPointerException("Failed to create statement");
         }
@@ -156,12 +148,65 @@ public class DBManager {
         return jsonArray;
     }
 
-    public Map<String, Collaborations> loadCollaborations() {
+    public Map<String, Collaborations> loadCollaborations() throws SQLException {
+        Map<String, Collaborations> keyToCollaboration = new HashMap<>();
 
+        String allRecordsQuery = "SELECT * FROM " + messagingTableName;
+        try (Statement st = connection.createStatement()) {
+            ResultSet rs = executeQuery(st, allRecordsQuery);
+            while (rs.next()) {
+                String ckey = rs.getString(KEY_INDEX);
+                int sessionId = rs.getInt(SESSION_ID_INDEX);
+                String source = rs.getString(SOURCE_INDEX);
+                String target = rs.getString(TARGET_INDEX);
+                long time = rs.getLong(TIME_INDEX);
+                String data = rs.getString(DATA_INDEX);
 
+                Collaborations c = keyToCollaboration.get(ckey);
+                if (c == null) {
+                    c = new Collaborations();
+                    c.startNewSession(sessionId);
+                    keyToCollaboration.put(ckey, c);
+                }
+                if (!c.isSessionExists(sessionId)) {
+                    c.startNewSession(sessionId);
+                }
+                c.addNewMessage(sessionId, new MessageData(time, sessionId, source, target, ckey, data));
+            }
 
+            String allActives = "SELECT * FROM " + activeTableName;
+            rs = executeQuery(st, allActives);
+            while (rs.next()) {
+                String ckey = rs.getString(KEY_INDEX);
+                int sid = rs.getInt(SESSION_ID_INDEX);
 
+                if (rs.getBoolean(ACTIVE_INDEX)) {
+                    logger.info(String.format("Collaboration key %s and id %d is still active - continuing", ckey, sid));
+                } else {
+                    logger.info(String.format("Collaboration key %s and id %d is archived - Archiving", ckey, sid));
+                    Collaborations c = keyToCollaboration.get(ckey);
+                    if (c == null) {
+                        throw new RuntimeException("Something really bad has happened - collaboration doesn't exists");
+                    }
+                    c.archive(sid);
+                }
+            }
 
-        return null;
+            return keyToCollaboration;
+        }
     }
+
+    private ResultSet executeQuery(Statement st, String sqlQuery) throws SQLException {
+        logger.info("Executing query - " + sqlQuery);
+        ResultSet rs = st.executeQuery(sqlQuery);
+
+        if (!rs.isBeforeFirst()) {
+            logger.info("Query completed successfully - result was empty !!!");
+        } else {
+
+            logger.info("Query completed successfully - returning results ");
+        }
+        return rs;
+    }
+
 }
