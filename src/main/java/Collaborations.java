@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
 /**
@@ -11,7 +12,6 @@ import java.util.stream.Collectors;
  */
 
 public class Collaborations {
-    //    private int count = -1;
 //    private final String key;
     private final Map<Integer, Session> sessions = new HashMap<>();
 
@@ -51,8 +51,12 @@ public class Collaborations {
     }
 
 
-    public int getSessionsCount() {
-        return sessions.size();
+    public int createNewSessionId() {
+        int randomNum = ThreadLocalRandom.current().nextInt(1, Integer.MAX_VALUE);
+        while (sessions.containsKey(randomNum)) {
+            randomNum = ThreadLocalRandom.current().nextInt(1, Integer.MAX_VALUE);
+        }
+        return randomNum;
     }
 
     public void archive(int sid) {
@@ -68,43 +72,14 @@ public class Collaborations {
     }
 
     public void startNewSession(int sid) {
+        if (sessions.containsKey(sid)) {
+            throw new RuntimeException(String.format("Session with id '%d' already exists", sid));
+        }
         sessions.put(sid, new Session());
     }
 
     public boolean isActive(int sid) {
         Session s = sessions.get(sid);
         return s.isActive();
-    }
-
-    private class Session {
-        private final LinkedList<MessageData> messages = new LinkedList<>();
-        private final Object syncObject = new Object();
-        private boolean active = true;
-
-        void addNewMessage(MessageData messageData) {
-            synchronized (syncObject) {
-                messages.addFirst(messageData);
-            }
-        }
-
-        List<MessageData> getAllMessagesFrom(String user) {
-            synchronized (syncObject) {
-                return messages.stream().filter((m) -> m.getSource().equals(user)).collect(Collectors.toList());
-            }
-        }
-
-        MessageData getLastMessageFrom(String user) {
-            synchronized (syncObject) {
-                return messages.stream().filter((m) -> m.getSource().equals(user)).findFirst().orElse(null);
-            }
-        }
-
-        void archive() {
-            active = false;
-        }
-
-        boolean isActive() {
-            return active;
-        }
     }
 }

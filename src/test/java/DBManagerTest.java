@@ -1,6 +1,5 @@
 import org.junit.AfterClass;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -35,7 +34,7 @@ public class DBManagerTest {
             int randSid = getRansomNumber();
 
             dbManager.addNewMessage(new MessageData((int) (timestamp * Math.random()), randSid, user1, user2, cKey, simpleData));
-            dbManager.addNewCollaboration(cKey, randSid);
+            dbManager.addNewActiveSession(cKey, randSid);
 
 //            System.out.println(dbManager.executeQuery("SELECT * FROM " + messagingTableName));
 //            System.out.println(dbManager.executeQuery("SELECT * FROM " + activeTableName));
@@ -52,7 +51,7 @@ public class DBManagerTest {
 //            startFresshMessagingTable();
 
             dbManager.addNewMessage(new MessageData((int) (timestamp * Math.random()), randSid, user1, user2, cKey, simpleData));
-            dbManager.addNewCollaboration(cKey, randSid);
+            dbManager.addNewActiveSession(cKey, randSid);
 
             Map<String, Collaborations> keysToCollaborations = dbManager.loadCollaborations();
             Collaborations c = keysToCollaborations.get(cKey);
@@ -87,12 +86,12 @@ public class DBManagerTest {
             dbManager.addNewMessage(new MessageData(timestamp + 2, randomStart, user1, user2, cKey, simpleData + String.valueOf(1)));
             dbManager.addNewMessage(new MessageData(timestamp + 3, randomStart, user1, user2, cKey, simpleData + String.valueOf(2)));
             dbManager.addNewMessage(new MessageData(timestamp + 4, randomStart, user2, user1, cKey, simpleData + String.valueOf(3)));
-            dbManager.addNewCollaboration(cKey, randomStart);
+            dbManager.addNewActiveSession(cKey, randomStart);
 //            Map<String, Collaborations> keysToCollaborations1 = dbManager.loadCollaborations();
 
             for (int i = 1; i < 10; i++) {
                 dbManager.addNewMessage(new MessageData(timestamp, randomStart+i, user1, user2, cKey, simpleData + String.valueOf(i)));
-                dbManager.addNewCollaboration(cKey, randomStart+i);
+                dbManager.addNewActiveSession(cKey, randomStart+i);
                 if (i % 2 == 0) {
                     dbManager.archiveCollaboration(cKey, randomStart+i);
                 }
@@ -137,7 +136,7 @@ public class DBManagerTest {
         try {
             int sid = (int) (Math.random() * 1000 + 5);
 
-            dbManager.addNewCollaboration(cKey, sid);
+            dbManager.addNewActiveSession(cKey, sid);
 //            System.out.println(dbManager.executeQuery("SELECT * FROM " + activeTableName));
 
             Assert.assertTrue(dbManager.isCollaborationActive(cKey, sid));

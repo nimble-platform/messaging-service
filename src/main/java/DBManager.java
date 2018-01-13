@@ -89,7 +89,7 @@ public class DBManager {
     }
 
 
-    void addNewCollaboration(String cKey, int sid) throws SQLException {
+    void addNewActiveSession(String cKey, int sid) throws SQLException {
         PreparedStatement statement = QueriesManager.getInsertNewActiveCollaborationStatment(connection, activeTableName, cKey, sid);
         executeUpdate(statement);
     }

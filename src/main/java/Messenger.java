@@ -45,7 +45,6 @@ public class Messenger extends Application {
     private final String sendMessageUrl;
     private final DBManager dbManager = new DBManager(MESSAGING_TABLE, ACTIVE_TABLE);
 
-//    TODO: add loading on start
     public Messenger() throws Exception {
         super();
         logger.info("Subscribing to kafka topic");
@@ -238,19 +237,26 @@ public class Messenger extends Application {
     @Path("/start-new")
     public Response startNewCommunication(@QueryParam("id1") String user1, @QueryParam("id2") String user2) {
         logCalledEndpoint("/start-new", new Parameter("id1", user1), new Parameter("id2", user2));
-        String key = Common.createCollaborationKey(user1, user2);
-        Collaborations collaborations = keyToCollaboration.get(key);
+        String cKey = Common.createCollaborationKey(user1, user2);
+        Collaborations collaborations = keyToCollaboration.get(cKey);
 
         if (collaborations == null) {
             collaborations = new Collaborations();
-            keyToCollaboration.put(key, collaborations);
+            keyToCollaboration.put(cKey, collaborations);
         }
-        int count = collaborations.getSessionsCount();
-        collaborations.startNewSession(count + 1);
-        logger.info(String.format("Started new session, session id=%d between user-id=%s and user-id=%s", count, user1, user2));
-
-        return logAndCreateResponse(201, String.valueOf(count));
+        try {
+            int sessionId = collaborations.createNewSessionId();
+            collaborations.startNewSession(sessionId);
+            dbManager.addNewActiveSession(cKey, sessionId);
+            logger.info(String.format("Started new session, session id=%d between user-id=%s and user-id=%s", sessionId, user1, user2));
+            return logAndCreateResponse(201, String.valueOf(sessionId));
+        } catch (SQLException e) {
+            e.printStackTrace();
+            logger.error("Failed to start new session");
+            return logAndCreateResponse(500, "Failed to start new session");
+        }
     }
+
     //endregion
 
     private void logCalledEndpoint(String endpoint, Parameter... params) {
