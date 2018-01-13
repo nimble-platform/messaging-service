@@ -29,7 +29,7 @@ public class Collaborations {
             throw new IllegalArgumentException(String.format("Collaboration with id %d doesn't exists", sid));
         }
         if (!s.isActive()) {
-            throw new NotAuthorizedException(String.format("Can't add collaboration with id %d has already been archived", sid));
+            throw new NotAuthorizedException(String.format("Can't add message to session with id %d, it has already been archived", sid));
         }
         s.addNewMessage(messageData);
     }
