@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
  */
 
 public class Collaborations {
-//    private int count = -1;
+    //    private int count = -1;
 //    private final String key;
     private final Map<Integer, Session> sessions = new HashMap<>();
 
@@ -57,6 +57,10 @@ public class Collaborations {
 
     public void archive(int sid) {
         Session s = sessions.get(sid);
+        if (s == null) { // Started session without messages and archived
+            s = new Session();
+            sessions.put(sid, s);
+        }
         if (!s.isActive()) {
             throw new IllegalStateException(String.format("Can't archive - %d already been archived", sid));
         }

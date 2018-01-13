@@ -166,7 +166,7 @@ public class Messenger extends Application {
     @Path("/{s_id}/send")
     @Consumes(MediaType.TEXT_PLAIN)
     public Response sendMessage(@QueryParam("source") String source,
-                                @QueryParam("to") String target,
+                                @QueryParam("target") String target,
                                 @QueryParam("message") String msg,
                                 @PathParam("s_id") int sid,
                                 String data) {
@@ -252,10 +252,6 @@ public class Messenger extends Application {
         return logAndCreateResponse(201, String.valueOf(count));
     }
     //endregion
-
-//    private String createMessage(String source, String target, String key, String msg, int sid) {
-//
-//    }
 
     private void logCalledEndpoint(String endpoint, Parameter... params) {
         StringBuilder sb = new StringBuilder(String.format("Called endpoint %s with params: ", endpoint));
