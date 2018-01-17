@@ -80,7 +80,15 @@ public class DBManager {
         return sb.toString();
     }
 
-//    TODO: maybe add check for connection is valid
+    boolean isConnected() {
+        try {
+            return connection != null && connection.isValid(5);
+        } catch (SQLException e) {
+            logger.error("Error during validating the connections to the DB", e);
+            e.printStackTrace();
+            return false;
+        }
+    }
 
     void addNewMessage(MessageData m) throws SQLException {
         PreparedStatement statement = QueriesManager.getInsertIntoMessagingTable(

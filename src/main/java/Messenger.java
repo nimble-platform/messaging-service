@@ -88,6 +88,16 @@ public class Messenger extends Application {
         logCalledEndpoint("/");
         return logAndCreateResponse(200, "Hello from communication service");
     }
+
+    @GET
+    @Path("/health-check")
+    public Response runHealthCheck() {
+        logCalledEndpoint("/health-check");
+        return dbManager.isConnected() ?
+                logAndCreateResponse(200, "OK") :
+                logAndCreateResponse(400, "Failed");
+    }
+
     //endregion
 
     //region Read Messages
