@@ -3,6 +3,7 @@ import com.google.gson.JsonObject;
 import org.apache.log4j.Logger;
 
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -10,6 +11,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
@@ -22,7 +24,7 @@ public class DBManager {
     private Connection connection;
     private final String urlTemplate = "jdbc:postgresql://";
     private final String messagingTableName;
-    private final String activeTableName;
+    private final String sessionsTableName;
 
     private final int KEY_INDEX = 1;
     private final int SESSION_ID_INDEX = 2;
@@ -33,12 +35,12 @@ public class DBManager {
 
     private final int ACTIVE_INDEX = 3;
 
-    public DBManager(String messagingTableName, String activeTableName) {
-        if (Common.isNullOrEmpty(messagingTableName) || Common.isNullOrEmpty(activeTableName)) {
+    public DBManager(String messagingTableName, String sessionsTableName, boolean verifyTables) {
+        if (Common.isNullOrEmpty(messagingTableName) || Common.isNullOrEmpty(sessionsTableName)) {
             throw new NullPointerException("Tables can't be null or empty");
         }
         this.messagingTableName = messagingTableName;
-        this.activeTableName = activeTableName;
+        this.sessionsTableName = sessionsTableName;
 
         try {
             Class.forName("org.postgresql.Driver"); // Check that the driver is ok
@@ -52,9 +54,28 @@ public class DBManager {
             }
 
             connection = DriverManager.getConnection(urlTemplate + url, user, password);
+
+            if (!verifyTables) {
+                return;
+            }
+            DatabaseMetaData dbm = connection.getMetaData();
+
+            createTableIfMissing(dbm, messagingTableName, QueriesManager.getCreateMessagingTable(messagingTableName));
+            createTableIfMissing(dbm, sessionsTableName, QueriesManager.getCreateSessionsTable(sessionsTableName));
         } catch (Exception e) {
             connection = null;
             logger.error("Failed to connect to the db", e);
+        }
+    }
+
+    private void createTableIfMissing(DatabaseMetaData dbm, String tableName, String queryOnError) throws SQLException {
+        logger.info("Verifying table with name - " + tableName + " exists");
+        ResultSet tables = dbm.getTables(null, null, tableName, null);
+        if (tables.next()) {
+            logger.info("SUCCESS !!! The table - " + tableName + " exists");
+        } else {
+            logger.error("ERROR !!! The table - " + tableName + " doesn't exists - creating it now");
+            executeUpdateStatement(queryOnError);
         }
     }
 
@@ -96,14 +117,13 @@ public class DBManager {
         executeUpdate(statement);
     }
 
-
     void addNewActiveSession(String cKey, int sid) throws SQLException {
-        PreparedStatement statement = QueriesManager.getInsertNewActiveCollaborationStatment(connection, activeTableName, cKey, sid);
+        PreparedStatement statement = QueriesManager.getInsertNewActiveCollaborationStatment(connection, sessionsTableName, cKey, sid);
         executeUpdate(statement);
     }
 
     void archiveCollaboration(String cKey, int sid) throws SQLException {
-        PreparedStatement statement = QueriesManager.getArchiveCollaborationStatement(connection, activeTableName, cKey, sid);
+        PreparedStatement statement = QueriesManager.getArchiveCollaborationStatement(connection, sessionsTableName, cKey, sid);
         executeUpdate(statement);
     }
 
@@ -121,13 +141,36 @@ public class DBManager {
         logger.info(String.format("The update statement has affected %d lines", affectedRows));
     }
 
-    List<MessageData> getAllMessages(String user1, String user2, int sid) {
+    public List<SessionInfo> getAllSession(String user) throws SQLException {
+        String allSessionsQuery = "SELECT * FROM " + sessionsTableName;
+        List<SessionInfo> sessions = new LinkedList<>();
+
+
+        try (Statement st = connection.createStatement();
+             ResultSet rs = executeQuery(st, allSessionsQuery)) {
+
+            while (rs.next()) {
+                String ckey = rs.getString(KEY_INDEX);
+                int sessionId = rs.getInt(SESSION_ID_INDEX);
+                boolean isActive = rs.getBoolean(ACTIVE_INDEX);
+
+                String startRegex = String.format("%s[0-9].*|.*[0-9]*%s", user, user);
+                if (ckey.matches(startRegex)) {
+//                    System.out.println("Matches start - " + startRegex);
+                    sessions.add(new SessionInfo(ckey, sessionId, isActive));
+                }
+            }
+        }
+        return sessions;
+    }
+
+    public List<MessageData> getAllMessages(String user1, String user2, int sid) {
 
         return null;
     }
 
     boolean isCollaborationActive(String cKey, int sid) throws SQLException {
-        PreparedStatement statement = QueriesManager.getIsCollaborationActive(connection, activeTableName, cKey, sid);
+        PreparedStatement statement = QueriesManager.getIsCollaborationActive(connection, sessionsTableName, cKey, sid);
         if (statement == null) {
             throw new NullPointerException("Failed to create statement");
         }
@@ -191,23 +234,27 @@ public class DBManager {
     public Map<String, Collaborations> loadCollaborations() throws SQLException {
         Map<String, Collaborations> keyToCollaboration = loadMessages();
 
-        String allActivesQuery = "SELECT * FROM " + activeTableName;
+        String allSessionsQuery = "SELECT * FROM " + sessionsTableName;
 
         try (Statement st = connection.createStatement();
-             ResultSet activeResults = executeQuery(st, allActivesQuery)) {
+             ResultSet sessions = executeQuery(st, allSessionsQuery)) {
 //            System.out.println(resultSetToString(activeResults));
-            while (activeResults.next()) {
-                String ckey = activeResults.getString(KEY_INDEX);
-                int sid = activeResults.getInt(SESSION_ID_INDEX);
+            while (sessions.next()) {
+                String ckey = sessions.getString(KEY_INDEX);
+                int sid = sessions.getInt(SESSION_ID_INDEX);
+                boolean isSessionActive =sessions.getBoolean(ACTIVE_INDEX);
 
-                if (activeResults.getBoolean(ACTIVE_INDEX)) {
-                    logger.info(String.format("Collaboration key %s and id %d is still active - continuing", ckey, sid));
+                Collaborations c = keyToCollaboration.computeIfAbsent(ckey, k -> {
+                    logger.error("Read a collaboration with no messages between users with key - " + ckey);
+                    Collaborations tmp = new Collaborations();
+                    tmp.startNewSession(sid);
+                    return tmp;
+                });
+
+                if (isSessionActive) {
+                    logger.info(String.format("Collaboration key %s and session id %d is still active - continuing", ckey, sid));
                 } else {
-                    logger.info(String.format("Collaboration key %s and id %d is archived - Archiving", ckey, sid));
-                    Collaborations c = keyToCollaboration.get(ckey);
-                    if (c == null) {
-                        throw new RuntimeException("Something really bad has happened - collaboration doesn't exists");
-                    }
+                    logger.info(String.format("Collaboration key %s and session id %d was archived - Archiving", ckey, sid));
                     c.archive(sid);
                 }
             }
@@ -223,10 +270,8 @@ public class DBManager {
         if (!rs.isBeforeFirst()) {
             logger.info("Query completed successfully - result was empty !!!");
         } else {
-
             logger.info("Query completed successfully - returning results ");
         }
         return rs;
     }
-
 }

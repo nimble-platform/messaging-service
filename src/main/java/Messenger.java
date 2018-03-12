@@ -35,19 +35,27 @@ import java.util.Map;
 @Singleton
 public class Messenger extends Application {
     private final static Logger logger = Logger.getLogger(Messenger.class);
-    private final static String MESSAGING_TOPIC = "test_messaging_topic";
-    private final static String MESSAGING_TABLE = "test_messaging";
-    private final static String ACTIVE_TABLE = "test_active";
+    private final static String MESSAGING_TOPIC = "messaging_service_topic";
+
+    private final  String MESSAGING_TABLE;
+    private final  String SESSIONS_TABLE;
 
     private final Map<String, Collaborations> keyToCollaboration;
 
     private final Gson gson = new Gson();
     private final String sendMessageUrl;
-    private final DBManager dbManager = new DBManager(MESSAGING_TABLE, ACTIVE_TABLE);
+    private final DBManager dbManager;
 
     public Messenger() throws Exception {
         super();
         logger.info("Subscribing to kafka topic");
+
+        MESSAGING_TABLE = System.getenv("MESSAGING_TABLE");
+        SESSIONS_TABLE = System.getenv("SESSIONS_TABLE");
+        if (Common.isNullOrEmpty(MESSAGING_TABLE) || Common.isNullOrEmpty(SESSIONS_TABLE)) {
+            logger.error("Messaging and sessions tables can't be null or empty");
+            throw new IllegalStateException("Missing table names");
+        }
 
         String csbUrl = System.getenv("CSB_URL");
         String serviceUrl = System.getenv("SERVICE_URL");
@@ -62,6 +70,8 @@ public class Messenger extends Application {
         String subscribeUrl = String.format("http://%s/consumer/subscribe/%s?handler=http://%s/receive", csbUrl, MESSAGING_TOPIC, serviceUrl);
         logger.info("CSB subscribe URL is set to - " + subscribeUrl);
         HttpPost httpPost = new HttpPost(subscribeUrl);
+
+        dbManager = new DBManager(MESSAGING_TABLE, SESSIONS_TABLE, true);
 
         try (CloseableHttpClient httpclient = HttpClients.createDefault()) {
 
@@ -81,7 +91,7 @@ public class Messenger extends Application {
         }
     }
 
-    //region Hello From Service
+    //region Hello And Health
 
     @GET
     public Response root() {
@@ -99,6 +109,20 @@ public class Messenger extends Application {
     }
 
     //endregion
+
+    @GET
+    @Path("/{user_id}/sessions")
+    public Response getAllSessionsForUser(@PathParam("user_id") String user) {
+        logCalledEndpoint(String.format("/%s/sessions", user));
+        try {
+            logger.info("Retrieving all the session for user - " + user);
+            List<SessionInfo> sessions = dbManager.getAllSession(user);
+            return logAndCreateResponse(200, new Gson().toJson(sessions));
+        } catch (Throwable t) {
+            t.printStackTrace();
+            return logAndCreateResponse(500, "Failed to retrieve all sessions - " + t.getMessage());
+        }
+    }
 
     //region Read Messages
 
@@ -230,15 +254,23 @@ public class Messenger extends Application {
         logCalledEndpoint(String.format("/%d/archive", sid), new Parameter("id1", user1), new Parameter("id2", user2));
         String key = Common.createCollaborationKey(user1, user2);
         Collaborations c = keyToCollaboration.get(key);
+        if (c == null) {
+            return logAndCreateResponse(400, String.format("No session with id %d exists for user=%s and user=s", sid, user1, user2));
+        }
         if (!c.isActive(sid)) {
             return logAndCreateResponse(400, String.format("Can't archive collaboration with id %d has already been archived", sid));
         } else {
-            c.archive(sid);
+            try {
+                c.archive(sid);
 
-            logger.info("Archiving the collaboration at the Database");
-            dbManager.archiveCollaboration(key, sid);
+                logger.info("Archiving the collaboration at the Database");
+                dbManager.archiveCollaboration(key, sid);
 
-            return logAndCreateResponse(200, String.format("Collaboration with id %d was archived", sid));
+                return logAndCreateResponse(200, String.format("Collaboration with id %d was archived", sid));
+            } catch (Throwable t) {
+                t.printStackTrace();
+                return logAndCreateResponse(400, String.format("Failed to archive session with id %d - %s", sid, t.getMessage()));
+            }
         }
     }
 
