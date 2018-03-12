@@ -29,6 +29,10 @@ spec:
           value: "csb-kafka:8080"
         - name: SERVICE_URL
           value: "messaging-service:8080"
+        - name: MESSAGING_TABLE
+          value: "messaging_table_prod"
+        - name: SESSIONS_TABLE
+          value: "sessions_table_prod"
         - name: POSTGRES_URL
           valueFrom:
             secretKeyRef:
