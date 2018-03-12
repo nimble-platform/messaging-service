@@ -15,7 +15,7 @@ public class QueriesManager {
     private static String INSERT_INTO_ACTIVE_TEMPLATE = "INSERT INTO %s VALUES (?,?,TRUE);";
     private static String INSERT_INTO_MESSAGING = "INSERT INTO %s VALUES (?,?,?,?,?,?);";
 
-    public static String getCreateActiveTable(String tableName) {
+    public static String getCreateSessionsTable(String tableName) {
         return "CREATE TABLE " + tableName + "(" +
                 "c_key  TEXT     NOT NULL ," +
                 "s_id   INTEGER  NOT NULL ," +
@@ -30,7 +30,7 @@ public class QueriesManager {
                 "s_id       INTEGER  NOT NULL ," +
                 "source     TEXT     NOT NULL ," +
                 "target     TEXT     NOT NULL ," +
-                "time       INTEGER  NOT NULL ," +
+                "time       BIGINT   NOT NULL ," +
                 "data       TEXT     NOT NULL ," +
                 "PRIMARY    KEY(c_key, s_id, time) " +
                 ");";
