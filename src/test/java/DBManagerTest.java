@@ -4,28 +4,29 @@ import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.sql.SQLException;
+import java.util.List;
 import java.util.Map;
 
 public class DBManagerTest {
-    private static final String messagingTableName = "test_messaging";
-    private static final String activeTableName = "test_active";
+    private static final String messagingTableName = "test_messaging_table";
+    private static final String sessionsTableName = "test_sessions_table";
 
     private static final String user1 = "moshe";
     private static final String user2 = "david";
-    private static final int sid = 1;
+
     private static final long timestamp = 232131212;
     private static final String simpleData = "this is simple data test";
 
 
     private static final String cKey = Common.createCollaborationKey(user1, user2);
 
-    private static DBManager dbManager = new DBManager(messagingTableName, activeTableName);
+    private static DBManager dbManager = new DBManager(messagingTableName, sessionsTableName, false);
 
     @BeforeClass
     public static void createTables() throws SQLException {
         System.out.println("Creating tables");
         runUpdateStatement(dbManager, QueriesManager.getCreateMessagingTable(messagingTableName));
-        runUpdateStatement(dbManager, QueriesManager.getCreateActiveTable(activeTableName));
+        runUpdateStatement(dbManager, QueriesManager.getCreateSessionsTable(sessionsTableName));
     }
 
     @Test
@@ -37,7 +38,7 @@ public class DBManagerTest {
             dbManager.addNewActiveSession(cKey, randSid);
 
 //            System.out.println(dbManager.executeQuery("SELECT * FROM " + messagingTableName));
-//            System.out.println(dbManager.executeQuery("SELECT * FROM " + activeTableName));
+//            System.out.println(dbManager.executeQuery("SELECT * FROM " + sessionsTableName));
         } catch (Exception e) {
             e.printStackTrace();
             Assert.fail();
@@ -137,16 +138,44 @@ public class DBManagerTest {
             int sid = (int) (Math.random() * 1000 + 5);
 
             dbManager.addNewActiveSession(cKey, sid);
-//            System.out.println(dbManager.executeQuery("SELECT * FROM " + activeTableName));
+//            System.out.println(dbManager.executeQuery("SELECT * FROM " + sessionsTableName));
 
             Assert.assertTrue(dbManager.isCollaborationActive(cKey, sid));
             dbManager.archiveCollaboration(cKey, sid);
             Assert.assertFalse(dbManager.isCollaborationActive(cKey, sid));
 
-//            System.out.println(dbManager.executeQuery("SELECT * FROM " + activeTableName));
+//            System.out.println(dbManager.executeQuery("SELECT * FROM " + sessionsTableName));
         } catch (Exception e) {
             e.printStackTrace();
             Assert.fail();
+        }
+    }
+
+    @Test
+    public void getAllSessionForUser() {
+        try {
+            String testUser1= "test-user@gmail.com1";
+            String testUser2= "test-user@gmail.com2";
+            String testUser3= "test-user@gmail.com3";
+
+            String ckey1 = Common.createCollaborationKey(testUser1, testUser2);
+            String ckey2 = Common.createCollaborationKey(testUser2, testUser3);
+
+            int sid1 = (int) (Math.random() * 10000 + 5);
+            int sid2 = sid1 +1;
+            dbManager.addNewActiveSession(ckey1, sid1);
+            dbManager.addNewActiveSession(ckey2, sid2);
+
+            List<SessionInfo> l = dbManager.getAllSession(testUser2);
+            Assert.assertEquals(l.size(), 2);
+            Assert.assertEquals(l.get(0).getCid(), ckey1);
+            Assert.assertEquals(l.get(1).getCid(), ckey2);
+
+            Assert.assertEquals(l.get(0).getSid(), sid1);
+            Assert.assertEquals(l.get(1).getSid(), sid2);
+
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
 
@@ -154,7 +183,7 @@ public class DBManagerTest {
     public static void deleteTables() throws SQLException {
         System.out.println("Deleting tables");
         runUpdateStatement(dbManager, "DROP TABLE " + messagingTableName);
-        runUpdateStatement(dbManager, "DROP TABLE " + activeTableName);
+        runUpdateStatement(dbManager, "DROP TABLE " + sessionsTableName);
     }
 
     private static void runUpdateStatement(DBManager dbManager, String sql) throws SQLException {
