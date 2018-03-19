@@ -103,9 +103,11 @@ public class Messenger extends Application {
     @Path("/health-check")
     public Response runHealthCheck() {
         logCalledEndpoint("/health-check");
-        return dbManager.isConnected() ?
-                logAndCreateResponse(200, "OK") :
-                logAndCreateResponse(400, "Failed");
+        synchronized (dbManager) {
+            return dbManager.isConnected() ?
+                    logAndCreateResponse(200, "OK") :
+                    logAndCreateResponse(400, "Failed");
+        }
     }
 
     //endregion
