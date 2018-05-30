@@ -21,8 +21,13 @@ import java.util.Map;
 
 public class DBManager {
     private final static Logger logger = Logger.getLogger(DBManager.class);
+
+    private String user;
+    private String password;
+    private String connectionUrl;
+
     private Connection connection;
-    private final String urlTemplate = "jdbc:postgresql://";
+
     private final String messagingTableName;
     private final String sessionsTableName;
 
@@ -45,15 +50,16 @@ public class DBManager {
         try {
             Class.forName("org.postgresql.Driver"); // Check that the driver is ok
 
-            String user = System.getenv("POSTGRES_USERNAME");
-            String password = System.getenv("POSTGRES_PASSWORD");
+            user = System.getenv("POSTGRES_USERNAME");
+            password = System.getenv("POSTGRES_PASSWORD");
             String url = System.getenv("POSTGRES_URL");
 
-            if (user == null || password == null || url == null || user.isEmpty() || password.isEmpty() || url.isEmpty()) {
+            connectionUrl = "jdbc:postgresql://" + url;
+            if (Common.isNullOrEmpty(user) || Common.isNullOrEmpty(password) || Common.isNullOrEmpty(url)) {
                 throw new Exception("Credential values can't be null or empty");
             }
 
-            connection = DriverManager.getConnection(urlTemplate + url, user, password);
+            connection = DriverManager.getConnection(connectionUrl, user, password);
 
             if (!verifyTables) {
                 return;
@@ -104,6 +110,17 @@ public class DBManager {
     boolean isConnected() {
         try {
             return connection != null && connection.isValid(5);
+        } catch (SQLException e) {
+            logger.error("Error during validating the connections to the DB", e);
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    boolean reconnect() {
+        try {
+            connection = DriverManager.getConnection(connectionUrl, user, password);
+            return isConnected();
         } catch (SQLException e) {
             logger.error("Error during validating the connections to the DB", e);
             e.printStackTrace();
@@ -242,7 +259,7 @@ public class DBManager {
             while (sessions.next()) {
                 String ckey = sessions.getString(KEY_INDEX);
                 int sid = sessions.getInt(SESSION_ID_INDEX);
-                boolean isSessionActive =sessions.getBoolean(ACTIVE_INDEX);
+                boolean isSessionActive = sessions.getBoolean(ACTIVE_INDEX);
 
                 Collaborations c = keyToCollaboration.computeIfAbsent(ckey, k -> {
                     logger.error("Read a collaboration with no messages between users with key - " + ckey);

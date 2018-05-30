@@ -20,6 +20,7 @@ import javax.ws.rs.QueryParam;
 import javax.ws.rs.core.Application;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.ws.rs.core.Response.Status;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringWriter;
@@ -37,8 +38,8 @@ public class Messenger extends Application {
     private final static Logger logger = Logger.getLogger(Messenger.class);
     private final static String MESSAGING_TOPIC = "messaging_service_topic";
 
-    private final  String MESSAGING_TABLE;
-    private final  String SESSIONS_TABLE;
+    private final String MESSAGING_TABLE;
+    private final String SESSIONS_TABLE;
 
     private final Map<String, Collaborations> keyToCollaboration;
 
@@ -96,7 +97,7 @@ public class Messenger extends Application {
     @GET
     public Response root() {
         logCalledEndpoint("/");
-        return logAndCreateResponse(200, "Hello from communication service");
+        return logAndCreateResponse(Status.OK, "Hello from communication service");
     }
 
     @GET
@@ -104,9 +105,13 @@ public class Messenger extends Application {
     public Response runHealthCheck() {
         logCalledEndpoint("/health-check");
         synchronized (dbManager) {
-            return dbManager.isConnected() ?
-                    logAndCreateResponse(200, "OK") :
-                    logAndCreateResponse(400, "Failed");
+            if (dbManager.isConnected()) {
+                return logAndCreateResponse(Response.Status.OK, "OK");
+            }
+            logger.debug("The db connection isn't connected - trying to reconnect");
+            return (dbManager.reconnect()) ?
+                    logAndCreateResponse(Status.OK, "Ok") :
+                    logAndCreateResponse(Status.INTERNAL_SERVER_ERROR, "Failed");
         }
     }
 
@@ -119,10 +124,10 @@ public class Messenger extends Application {
         try {
             logger.info("Retrieving all the session for user - " + user);
             List<SessionInfo> sessions = dbManager.getAllSession(user);
-            return logAndCreateResponse(200, new Gson().toJson(sessions));
+            return logAndCreateResponse(Status.OK, new Gson().toJson(sessions));
         } catch (Throwable t) {
-            t.printStackTrace();
-            return logAndCreateResponse(500, "Failed to retrieve all sessions - " + t.getMessage());
+            logger.error("Exception during getting all the sessions for - " + user, t);
+            return logAndCreateResponse(Status.INTERNAL_SERVER_ERROR, "Failed to retrieve all sessions - " + t);
         }
     }
 
@@ -136,14 +141,14 @@ public class Messenger extends Application {
         String key = Common.createCollaborationKey(source, target);
         Collaborations collaborations = keyToCollaboration.get(key);
         if (collaborations == null) {
-            return logAndCreateResponse(404, String.format("No keyToCollaboration exists between the users '%s' and '%s'", source, target));
+            return logAndCreateResponse(Status.NO_CONTENT, String.format("No keyToCollaboration exists between the users '%s' and '%s'", source, target));
         }
         MessageData msg = collaborations.getLastMessageFrom(sid, source);
         if (msg == null) {
-            return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", source, target));
+            return logAndCreateResponse(Status.NO_CONTENT, String.format("No messages were sent from '%s' to '%s'", source, target));
         }
 
-        return logAndCreateResponse(200, msg.getData());
+        return logAndCreateResponse(Status.OK, msg.getData());
     }
 
     @GET
@@ -154,16 +159,16 @@ public class Messenger extends Application {
         String key = Common.createCollaborationKey(source, target);
         Collaborations collaborations = keyToCollaboration.get(key);
         if (collaborations == null) {
-            return logAndCreateResponse(404, String.format("No keyToCollaboration exists between the users '%s' and '%s'", source, target));
+            return logAndCreateResponse(Status.NO_CONTENT, String.format("No keyToCollaboration exists between the users '%s' and '%s'", source, target));
         }
         List<MessageData> messages = collaborations.getAllMessagesFrom(sid, source);
         if (messages.size() == 0) {
-            return logAndCreateResponse(404, String.format("No messages were sent from '%s' to '%s'", source, target));
+            return logAndCreateResponse(Status.NO_CONTENT, String.format("No messages were sent from '%s' to '%s'", source, target));
         }
         JsonArray array = new JsonArray();
         messages.forEach((m) -> array.add(m.getData()));
 
-        return logAndCreateResponse(200, gson.toJson(array));
+        return logAndCreateResponse(Status.OK, gson.toJson(array));
     }
     //endregion
 
@@ -190,10 +195,10 @@ public class Messenger extends Application {
             int sid = messageData.getSessionId();
 
             collaborations.addNewMessage(sid, messageData);
-            return logAndCreateResponse(200, "MessageData was received");
+            return logAndCreateResponse(Status.OK, "MessageData was received");
         } catch (Exception e) {
-            return logAndCreateResponse(400, "Problem with storing the message");
-
+            logger.error("Exception during receiving message", e);
+            return logAndCreateResponse(Status.INTERNAL_SERVER_ERROR, "Problem with storing the message");
         }
     }
 
@@ -214,7 +219,7 @@ public class Messenger extends Application {
         String key = Common.createCollaborationKey(source, target);
         Collaborations c = keyToCollaboration.get(key);
         if (!c.isActive(sid)) {
-            return logAndCreateResponse(400, String.format("Can't send messages collaboration with id %d has been archived", sid));
+            return logAndCreateResponse(Status.CONFLICT, String.format("Can't send messages collaboration with id %d has been archived", sid));
         }
 
         long time = System.currentTimeMillis();
@@ -230,7 +235,7 @@ public class Messenger extends Application {
 
             HttpResponse response = httpclient.execute(httpPost);
             if (response.getStatusLine().getStatusCode() != 200) {
-                return logAndCreateResponse(400, "Error during sending the message to CSB-service");
+                return logAndCreateResponse(Status.INTERNAL_SERVER_ERROR, "Error during sending the message to CSB-service");
             }
 
             String res = inputStreamToString(response.getEntity().getContent());
@@ -239,11 +244,11 @@ public class Messenger extends Application {
             logger.info("Sending the message to the database");
             dbManager.addNewMessage(messageData);
 
-            return logAndCreateResponse(200, "MessageData was sent");
+            return logAndCreateResponse(Status.OK, "MessageData was sent");
 
         } catch (Throwable e) {
             logger.error(e);
-            return logAndCreateResponse(400, "Error handling the send message - " + String.valueOf(e));
+            return logAndCreateResponse(Status.INTERNAL_SERVER_ERROR, "Error handling the send message - " + String.valueOf(e));
         }
     }
     //endregion
@@ -257,10 +262,10 @@ public class Messenger extends Application {
         String key = Common.createCollaborationKey(user1, user2);
         Collaborations c = keyToCollaboration.get(key);
         if (c == null) {
-            return logAndCreateResponse(400, String.format("No session with id %d exists for user=%s and user=s", sid, user1, user2));
+            return logAndCreateResponse(Status.BAD_REQUEST, String.format("No session with id %d exists for user=%s and user=%s", sid, user1, user2));
         }
         if (!c.isActive(sid)) {
-            return logAndCreateResponse(400, String.format("Can't archive collaboration with id %d has already been archived", sid));
+            return logAndCreateResponse(Status.BAD_REQUEST, String.format("Can't archive collaboration with id %d has already been archived", sid));
         } else {
             try {
                 c.archive(sid);
@@ -268,10 +273,10 @@ public class Messenger extends Application {
                 logger.info("Archiving the collaboration at the Database");
                 dbManager.archiveCollaboration(key, sid);
 
-                return logAndCreateResponse(200, String.format("Collaboration with id %d was archived", sid));
+                return logAndCreateResponse(Status.OK, String.format("Collaboration with id %d was archived", sid));
             } catch (Throwable t) {
-                t.printStackTrace();
-                return logAndCreateResponse(400, String.format("Failed to archive session with id %d - %s", sid, t.getMessage()));
+                logger.error("Error during archiving of collaboration", t);
+                return logAndCreateResponse(Status.INTERNAL_SERVER_ERROR, String.format("Failed to archive session with id %d - %s", sid, t.getMessage()));
             }
         }
     }
@@ -293,11 +298,10 @@ public class Messenger extends Application {
             collaborations.startNewSession(sessionId);
             dbManager.addNewActiveSession(cKey, sessionId);
             logger.info(String.format("Started new session, session id=%d between user-id=%s and user-id=%s", sessionId, user1, user2));
-            return logAndCreateResponse(201, String.valueOf(sessionId));
+            return logAndCreateResponse(Status.CREATED, String.valueOf(sessionId));
         } catch (SQLException e) {
-            e.printStackTrace();
-            logger.error("Failed to start new session");
-            return logAndCreateResponse(500, "Failed to start new session");
+            logger.error("Failed to start new session", e);
+            return logAndCreateResponse(Status.INTERNAL_SERVER_ERROR, "Failed to start new session");
         }
     }
 
@@ -329,15 +333,16 @@ public class Messenger extends Application {
         return keyToCollaboration.get(key);
     }
 
-    private Response logAndCreateResponse(int responseCode, String msg) {
-        String logMessage = "The returned message is: " + msg + " and return code is: " + String.valueOf(responseCode);
-        if (responseCode >= 200 && responseCode < 300) {
+    private Response logAndCreateResponse(Status response, String msg) {
+        String logMessage = "The returned message is: " + msg + " and return code is: " + String.valueOf(response);
+        int code = response.getStatusCode();
+        if (code >= 200 && code < 300) {
             logger.info(logMessage);
         } else {
             logger.error(logMessage);
         }
 
-        return Response.status(responseCode).entity(msg).build();
+        return Response.status(response).entity(msg).build();
     }
 
     private class Parameter {
