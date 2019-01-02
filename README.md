@@ -69,7 +69,7 @@ curl -X GET 'https://nimble.eu-de.containers.appdomain.cloud/messaging/771816529
 archive session:
 ----------------
 Post /{session_id}/archive - query params id1, id2  
-after a seesion is archived it's not possible to sent messages using the session  
+once a seesion is archived it's not possible to sent messages using the session  
 ```
 curl -X POST 'https://nimble.eu-de.containers.appdomain.cloud/messaging/771816529/archive?id1=nir&id2=benny'
 Collaboration with id 771816529 was archived
