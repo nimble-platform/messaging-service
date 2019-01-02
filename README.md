@@ -14,22 +14,26 @@ curl -X GET 'https://nimble.eu-de.containers.appdomain.cloud/messaging/'
 health check of messaging service:
 ----------------------------------
 Get /health-check  
+should return OK  
 curl -X GET 'https://nimble.eu-de.containers.appdomain.cloud/messaging/health-check'
 
 starts new session:
 -------------------
 Post /start-new - query params: id1, id2  
-curl -X POST 'https://nimble.eu-de.containers.appdomain.cloud/messaging/start-new/?id1=nir&id2=benny'
+curl -X POST 'https://nimble.eu-de.containers.appdomain.cloud/messaging/start-new/?id1=nir&id2=benny'  
+the call returns the newly created session id  
 
 send a new message (as part of a session):
 ------------------------------------------
 Post /{session_id}/send - query params: source, target, message  
-curl -X POST 'https://nimble.eu-de.containers.appdomain.cloud/messaging/771816529/send?source=nir&target=benny&message=test_message'
+curl -X POST 'https://nimble.eu-de.containers.appdomain.cloud/messaging/771816529/send?source=nir&target=benny&message=test_message'  
+the call should return the following message: "the message wa sent successfully"  
 
 get all user id sessions:
 -------------------------
 Get /{user_id}/sessions  
-curl -X GET 'https://nimble.eu-de.containers.appdomain.cloud/messaging/nir/sessions'
+curl -X GET 'https://nimble.eu-de.containers.appdomain.cloud/messaging/nir/sessions'  
+returns an array of all user sessions
 
 get latest message sent by the source in this session:
 ------------------------------------------------------
@@ -40,7 +44,6 @@ get all messages sent from the source to target in this session
 ------------------------------------------------------
 Get /{session_id}/all - query params source, target  
 curl -X GET 'https://nimble.eu-de.containers.appdomain.cloud/messaging/771816529/all?source=nir&target=benny'
-
 
 archive session:
 ----------------
