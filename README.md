@@ -45,3 +45,4 @@ curl -X GET 'https://nimble.eu-de.containers.appdomain.cloud/messaging/771816529
 archive session:
 ----------------
 Post /{session_id}/archive - query params id1, id2  
+curl -X POST 'https://nimble.eu-de.containers.appdomain.cloud/messaging/771816529/archive?id1=nir&id2=benny'
